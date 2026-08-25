@@ -7,10 +7,13 @@ import {
   buildSignedMessageUrl,
   buildPeriodicReport,
   canonicalSnapshot,
+  clearIdentitySeed,
   cleanTechnocoreText,
   createIdentity,
   formatPrice,
+  loadIdentitySeed,
   normalizeSymbol,
+  saveIdentitySeed,
   signSnapshot,
   signTechnocoreMessage,
   tickerFromRest,
@@ -82,6 +85,33 @@ for (const match of appSource.matchAll(/getElementById\('([^']+)'\)/g)) {
 }
 
 const seed = '000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f';
+const storedValues = new Map();
+const fakeStorage = {
+  getItem: (key) => storedValues.get(key) ?? null,
+  setItem: (key, value) => storedValues.set(key, value),
+  removeItem: (key) => storedValues.delete(key),
+};
+assert.equal(saveIdentitySeed(fakeStorage, seed.toUpperCase()), 'persistent');
+assert.equal(loadIdentitySeed(fakeStorage), seed);
+clearIdentitySeed(fakeStorage);
+assert.equal(loadIdentitySeed(fakeStorage), null);
+assert.throws(() => saveIdentitySeed(fakeStorage, 'not-a-seed'), /invalid Ed25519 seed/);
+const fallbackValues = new Map();
+const blockedStorage = {
+  getItem: () => { throw new Error('blocked'); },
+  setItem: () => { throw new Error('blocked'); },
+  removeItem: () => { throw new Error('blocked'); },
+};
+const fallbackStorage = {
+  getItem: (key) => fallbackValues.get(key) ?? null,
+  setItem: (key, value) => fallbackValues.set(key, value),
+  removeItem: (key) => fallbackValues.delete(key),
+};
+assert.equal(saveIdentitySeed(blockedStorage, seed, fallbackStorage), 'session');
+assert.equal(loadIdentitySeed(blockedStorage, fallbackStorage), seed);
+clearIdentitySeed(blockedStorage, fallbackStorage);
+assert.equal(loadIdentitySeed(blockedStorage, fallbackStorage), null);
+
 const identity = await createIdentity(seed, webcrypto);
 assert.match(identity.did, /^did:key:z6Mk/);
 assert.equal(identity.did.length, 56);

@@ -30,11 +30,12 @@ curl -s 'localhost:8080/kv/plans/next/set/ship%20it'     # persist a note
 [`client/`](client) is a standalone DID crypto watchlist designed for static Vercel hosting. It
 reads public Binance Spot 24-hour tickers over REST and switches to the one-second ticker WebSocket
 stream for live updates. Its crypto agent answers price, ranking, comparison and 24-hour-range
-questions from those tickers and can report every 5 or 10 minutes while the page is open. Its
-Ed25519 seed stays in tab memory; only the non-secret watchlist is saved in browser storage. A DID
-can sign a message using Technocore's `room|nonce|text` canonical form, generate its signed GET URL,
-and open that URL to publish the verified message and receive its sequence. The page can also
-download the 64-hex seed and public DID as a text file; private key material is never sent.
+questions from those tickers and can report every 5 or 10 minutes while the page is open. The
+64-hex Ed25519 seed is stored in origin-scoped browser storage and restored after refresh, with
+session storage as a fallback; this convenience is for trusted devices only. A DID can sign a
+message using Technocore's `room|nonce|text` canonical form, generate its signed GET URL, and open
+that URL to publish the verified message and receive its sequence. The seed can also be downloaded
+with the public DID as a text file; private key material is never sent by the page.
 
 Run it locally:
 

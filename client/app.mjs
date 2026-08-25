@@ -1,6 +1,7 @@
 const API_URL = 'https://api.binance.com/api/v3/ticker/24hr';
 const STREAM_URL = 'wss://stream.binance.com:9443/stream?streams=';
 const WATCHLIST_KEY = 'signal-id-watchlist-v1';
+const SAVED_SEED_KEY = 'signal-id-ed25519-seed-v1';
 const DEFAULT_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT'];
 const MAX_SYMBOLS = 8;
 const ROOM_RE = /^[a-z0-9][a-z0-9_-]{0,47}$/;
@@ -112,6 +113,40 @@ export async function createIdentity(seedHex, cryptoApi = globalThis.crypto) {
     key,
     verifyKey,
   };
+}
+
+export function saveIdentitySeed(storage, seed, fallbackStorage = null) {
+  const normalized = String(seed || '').trim().toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(normalized)) throw new Error('Refusing to store an invalid Ed25519 seed.');
+  try {
+    storage.setItem(SAVED_SEED_KEY, normalized);
+    fallbackStorage?.removeItem(SAVED_SEED_KEY);
+    return 'persistent';
+  } catch (error) {
+    if (!fallbackStorage) throw error;
+    fallbackStorage.setItem(SAVED_SEED_KEY, normalized);
+    return 'session';
+  }
+}
+
+export function loadIdentitySeed(storage, fallbackStorage = null) {
+  for (const candidate of [storage, fallbackStorage]) {
+    if (!candidate) continue;
+    try {
+      const seed = String(candidate.getItem(SAVED_SEED_KEY) || '').trim().toLowerCase();
+      if (/^[0-9a-f]{64}$/.test(seed)) return seed;
+      if (seed) candidate.removeItem(SAVED_SEED_KEY);
+    } catch (_) {
+      // Private browsing policies can disable a storage provider entirely.
+    }
+  }
+  return null;
+}
+
+export function clearIdentitySeed(storage, fallbackStorage = null) {
+  for (const candidate of [storage, fallbackStorage]) {
+    try { candidate?.removeItem(SAVED_SEED_KEY); } catch (_) { /* no-op */ }
+  }
 }
 
 export function canonicalSnapshot(did, tickers, createdAt) {
@@ -543,7 +578,14 @@ function startApp() {
       elements.did.value = identity.did;
       elements.identityState.textContent = 'Ready';
       elements.identityState.classList.add('active');
-      elements.identityMessage.textContent = 'Ready to sign Technocore messages locally.';
+      try {
+        const storageMode = saveIdentitySeed(localStorage, identity.seed, sessionStorage);
+        elements.identityMessage.textContent = storageMode === 'persistent'
+          ? 'Saved on this browser. The same DID returns after refresh.'
+          : 'Saved for this tab because persistent browser storage is unavailable.';
+      } catch (_) {
+        elements.identityMessage.textContent = 'DID is active, but this browser blocked local storage.';
+      }
       for (const button of [buttons.copyDid, buttons.copySeed, buttons.downloadSeed, buttons.forget, buttons.signTechnocore]) {
         button.disabled = false;
       }
@@ -557,18 +599,19 @@ function startApp() {
 
   function forgetIdentity() {
     identity = null;
+    clearIdentitySeed(localStorage, sessionStorage);
     elements.seed.value = '';
     elements.seed.type = 'password';
     elements.did.value = 'Generate or import a seed to begin';
     elements.identityState.textContent = 'Not connected';
     elements.identityState.classList.remove('active');
-    elements.identityMessage.textContent = 'Private key material was removed from this tab.';
+    elements.identityMessage.textContent = 'Private key material was removed from this browser.';
     for (const button of [buttons.copyDid, buttons.copySeed, buttons.downloadSeed, buttons.forget,
       buttons.signTechnocore, buttons.copySignedUrl, buttons.openSignedUrl]) button.disabled = true;
     elements.technocoreNonce.value = '';
     elements.technocoreSignature.value = '';
     elements.signedUrl.value = '';
-    elements.publishStatus.textContent = 'Private key material was removed from this tab.';
+    elements.publishStatus.textContent = 'Private key material was removed from this browser.';
   }
 
   async function copyText(value, message, statusElement = elements.identityMessage) {
@@ -667,6 +710,7 @@ function startApp() {
   }
 
   document.getElementById('generate-did').addEventListener('click', () => {
+    if (identity && !window.confirm('Create a new DID? This replaces the identity saved in this browser. Download the current seed first if you need it.')) return;
     const seed = new Uint8Array(32);
     crypto.getRandomValues(seed);
     activateSeed(hex(seed));
@@ -753,6 +797,11 @@ function startApp() {
 
   renderMarket();
   addAgentMessage('agent', 'Hello. I track the live Binance data in your watchlist. Try “BTC price” or “Top losers”.');
+  const savedSeed = loadIdentitySeed(localStorage, sessionStorage);
+  if (savedSeed) {
+    elements.identityMessage.textContent = 'Restoring saved DID…';
+    activateSeed(savedSeed);
+  }
   refreshMarket();
   connectStream();
 }
