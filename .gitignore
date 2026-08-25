@@ -9,6 +9,14 @@ dist/
 node_modules/
 mutants/
 .schemathesis/
+*.seed
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+.env
+.env.*
+!.env.example
+!**/.env.example
 
 # local agent workspaces and scratch worktrees
 .claude/

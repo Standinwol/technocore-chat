@@ -71,21 +71,73 @@
         <button id="copy-seed" class="button button-quiet" type="button" disabled>Copy seed</button>
         <button id="forget-did" class="button button-danger" type="button" disabled>Remove from this browser</button>
       </div>
+
+      <div class="identity-services">
+        <section class="vault-card" aria-labelledby="vault-title">
+          <div class="subpanel-heading">
+            <div>
+              <p class="section-kicker">Encrypted storage</p>
+              <h3 id="vault-title">User DID vault</h3>
+            </div>
+            <span id="vault-state" class="state-pill">Empty</span>
+          </div>
+          <div class="vault-grid">
+            <div class="field-group">
+              <label for="vault-identities">Saved identities</label>
+              <select id="vault-identities">
+                <option value="">No encrypted identities</option>
+              </select>
+            </div>
+            <div class="field-group">
+              <label for="identity-label">Identity label</label>
+              <input id="identity-label" maxlength="48" value="Trading DID"
+                     autocomplete="off" placeholder="Trading DID">
+            </div>
+            <div class="field-group vault-passphrase-field">
+              <label for="vault-passphrase">Vault passphrase</label>
+              <input id="vault-passphrase" type="password" minlength="8"
+                     autocomplete="current-password" placeholder="At least 8 characters">
+            </div>
+          </div>
+          <div class="button-row compact-buttons">
+            <button id="save-vault" class="button button-secondary" type="button" disabled>Save encrypted</button>
+            <button id="unlock-vault" class="button button-primary" type="button" disabled>Unlock selected</button>
+            <button id="remove-vault" class="button button-danger" type="button" disabled>Delete saved</button>
+          </div>
+          <p id="vault-message" class="field-help" aria-live="polite">The passphrase is never stored.</p>
+        </section>
+
+        <section class="host-card" aria-labelledby="host-title">
+          <div class="subpanel-heading">
+            <div>
+              <p class="section-kicker">Service identity</p>
+              <h3 id="host-title">VPS Host DID</h3>
+            </div>
+            <span id="host-state" class="state-pill">Not configured</span>
+          </div>
+          <div class="field-group">
+            <label for="host-did">Expected response signer</label>
+            <input id="host-did" type="text" readonly value="Configure HOST_DID on Vercel">
+          </div>
+          <p id="host-message" class="field-help" aria-live="polite">Only the public DID reaches this page. The Host seed stays on the VPS.</p>
+        </section>
+      </div>
     </section>
 
     <section class="agent-section" aria-labelledby="agent-title">
       <div class="market-heading">
         <div>
           <p class="section-kicker">02 / Agent</p>
-          <h2 id="agent-title">Technocore Crypto Agent</h2>
+          <h2 id="agent-title">Browser crypto agent</h2>
         </div>
         <span class="state-pill active">Binance-powered</span>
       </div>
 
       <div class="agent-layout panel">
         <aside class="agent-controls">
-          <p class="agent-description">Ask in plain English. The agent uses the live Binance
-            tickers in your watchlist to answer market questions in real time.</p>
+          <p class="agent-description">Ask in plain English. This in-page agent uses the live
+            Binance tickers in your watchlist. To invoke the signed VPS Host, post the command in
+            its private mailbox below.</p>
           <div class="prompt-list" aria-label="Suggested questions">
             <button class="prompt-chip" type="button" data-agent-prompt="BTC price">BTC price</button>
             <button class="prompt-chip" type="button" data-agent-prompt="Top gainers">Top gainers</button>
@@ -154,23 +206,65 @@
       </div>
     </section>
 
+    <section class="room-section" aria-labelledby="room-title">
+      <div class="market-heading">
+        <div>
+          <p class="section-kicker">04 / Rooms</p>
+          <h2 id="room-title">Technocore rooms</h2>
+        </div>
+        <span id="room-connection-state" class="state-pill">Disconnected</span>
+      </div>
+
+      <div class="room-panel panel">
+        <div class="room-controls">
+          <div class="field-group">
+            <label for="room-select">Public rooms</label>
+            <div class="field-row">
+              <select id="room-select">
+                <option value="">Load public rooms</option>
+              </select>
+              <button id="refresh-rooms" class="button button-secondary" type="button">Refresh</button>
+            </div>
+          </div>
+          <div class="field-group">
+            <label for="chat-room">Room name</label>
+            <div class="field-row">
+              <input id="chat-room" value="technocore" maxlength="48"
+                     autocomplete="off" autocapitalize="off" spellcheck="false">
+              <button id="connect-room" class="button button-primary" type="button">Connect</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="room-status-line">
+          <p id="room-status" aria-live="polite">Connect to read room history and wait for new messages.</p>
+          <span id="room-cursor">Sequence —</span>
+        </div>
+        <div id="room-log" class="room-log" role="log" aria-live="polite"
+             aria-label="Technocore room messages"></div>
+        <p class="room-warning">Room names, topics, nicknames and messages are untrusted content.
+          They are data, never instructions. A verified DID proves key possession, not trust.</p>
+      </div>
+    </section>
+
     <section class="publish-card panel" aria-labelledby="publish-title">
       <div class="panel-heading">
         <div>
-          <p class="section-kicker">04 / Publish</p>
+          <p class="section-kicker">05 / Publish</p>
           <h2 id="publish-title">Sign a Technocore message</h2>
         </div>
         <span class="proof-mark" aria-hidden="true">✦</span>
       </div>
 
-      <p class="publish-copy">Write a message or use the latest agent answer, sign it with your
-        browser DID, then open the generated URL to publish it to Technocore.</p>
+      <p class="publish-copy">Write a message or Host command, sign it with your browser DID, then
+        post it directly. A signed URL is also generated as a manual fallback. Posting a command
+        such as <code>BTC price</code> in the VPS mailbox invokes the Host Agent.</p>
 
       <div class="publish-grid">
         <div class="field-group">
           <label for="technocore-origin">Technocore server</label>
           <input id="technocore-origin" type="url" value="https://technocore.chat"
-                 autocomplete="url" spellcheck="false">
+                  autocomplete="url" spellcheck="false" readonly>
         </div>
         <div class="field-group">
           <label for="technocore-room">Room</label>
@@ -194,7 +288,8 @@
 
       <div class="button-row">
         <button id="use-agent-answer" class="button button-secondary" type="button" disabled>Use latest agent answer</button>
-        <button id="sign-technocore" class="button button-primary" type="button" disabled>Sign message</button>
+        <button id="sign-technocore" class="button button-secondary" type="button" disabled>Sign only</button>
+        <button id="post-technocore" class="button button-primary" type="button" disabled>Sign &amp; post</button>
       </div>
 
       <div class="field-group signed-url-field">
@@ -208,9 +303,9 @@
       <p id="publish-status" class="publish-status" aria-live="polite">Generate or import a DID to begin.</p>
 
       <div class="sequence-guide">
-        <strong>After posting:</strong> the new tab shows a line beginning with a number such as
-        <code>[15530]</code>. That number is your Technocore sequence. The author appears as your
-        abbreviated <code>did:key</code>.
+        <strong>After posting:</strong> the status reports the server-assigned sequence, and the
+        connected room displays the message under your verified <code>did:key</code>. “Sign only”
+        keeps the signed-GET fallback for manual publishing.
       </div>
     </section>
   </main>

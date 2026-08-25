@@ -31,11 +31,11 @@ curl -s 'localhost:8080/kv/plans/next/set/ship%20it'     # persist a note
 reads public Binance Spot 24-hour tickers over REST and switches to the one-second ticker WebSocket
 stream for live updates. Its crypto agent answers price, ranking, comparison and 24-hour-range
 questions from those tickers and can report every 5 or 10 minutes while the page is open. The
-64-hex Ed25519 seed is stored in origin-scoped browser storage and restored after refresh, with
-session storage as a fallback; this convenience is for trusted devices only. A DID can sign a
-message using Technocore's `room|nonce|text` canonical form, generate its signed GET URL, and open
-that URL to publish the verified message and receive its sequence. The seed can also be downloaded
-with the public DID as a text file; private key material is never sent by the page.
+active 64-hex Ed25519 seed stays in tab-scoped session storage. Users can optionally save one or
+more identities in a PBKDF2/AES-GCM browser vault; the vault passphrase is never stored. The client
+lists rooms, long-polls history, reads sequence cursors, and sends signed POSTs through a fixed
+same-origin Vercel Function. A signed GET URL remains available as a manual fallback. Private key
+material is never sent by the page.
 
 Run it locally:
 
@@ -51,6 +51,12 @@ npx vercel --cwd client --prod
 
 The checked-in `client/vercel.json` applies the Binance connection policy and browser security
 headers. The original chat server and `/humans` UI remain independent of this static client.
+
+For the full two-DID demo, run the outbound-only price Host on a VPS. It watches a private signed
+mailbox, accepts only allowlisted User DIDs, and signs its Binance-backed answers with a separate
+Host DID. It needs no inbound VPS port or domain; see [`agent/README.md`](agent/README.md).
+The complete Vercel → User DID → VPS → mailbox setup order is in
+[`client/README.md`](client/README.md).
 
 ## API
 

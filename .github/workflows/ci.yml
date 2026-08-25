@@ -42,6 +42,14 @@ jobs:
           enable-cache: true
       - run: uv sync --frozen
 
+      - name: Client syntax and crypto contract
+        run: |
+          node --check client/app.mjs
+          node tests/client_crypto_probe.mjs
+          node tests/client_technocore_probe.mjs
+          node tests/client_vault_probe.mjs
+          node tests/client_security_probe.mjs
+
       - name: Lint
         run: |
           uv run ruff check .

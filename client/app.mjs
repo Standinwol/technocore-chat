@@ -1,361 +1,69 @@
-const API_URL = 'https://api.binance.com/api/v3/ticker/24hr';
-const STREAM_URL = 'wss://stream.binance.com:9443/stream?streams=';
-const WATCHLIST_KEY = 'signal-id-watchlist-v1';
-const SAVED_SEED_KEY = 'signal-id-ed25519-seed-v1';
-const DEFAULT_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT'];
-const MAX_SYMBOLS = 8;
-const ROOM_RE = /^[a-z0-9][a-z0-9_-]{0,47}$/;
-const INVISIBLE = /[\p{Cc}\p{Cf}\p{Cs}\p{Co}\p{Zl}\p{Zp}]/gu;
-const PKCS8_ED25519 = new Uint8Array([
-  0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70,
-  0x04, 0x22, 0x04, 0x20,
-]);
+import {
+  clearIdentitySeed,
+  createIdentity,
+  hex,
+  loadIdentitySeed,
+  loadIdentityVault,
+  removeIdentityFromVault,
+  saveIdentitySeed,
+  saveIdentityToVault,
+  unlockIdentityFromVault,
+} from './identity.mjs';
+import {
+  API_URL,
+  STREAM_URL,
+  WATCHLIST_KEY,
+  DEFAULT_SYMBOLS,
+  MAX_SYMBOLS,
+  answerCryptoQuery,
+  buildPeriodicReport,
+  formatPrice,
+  normalizeSymbol,
+  tickerFromRest,
+  tickerFromStream,
+} from './market.mjs';
+import {
+  buildSignedMessageUrl,
+  listTechnocoreRooms,
+  nextTechnocoreNonce,
+  normalizeRoom,
+  postSignedTechnocoreMessage,
+  readTechnocoreRoom,
+  saveTechnocoreNonce,
+  signTechnocoreMessage,
+} from './technocore.mjs';
+import { populateRoomOptions, renderRoomMessages } from './room-ui.mjs';
 
-export function normalizeSymbol(value) {
-  let symbol = String(value || '').trim().toUpperCase().replace(/[\s/_-]/g, '');
-  if (!symbol) throw new Error('Enter an asset such as BTC or ETH.');
-  if (!symbol.endsWith('USDT')) symbol += 'USDT';
-  if (!/^[A-Z0-9]{5,16}$/.test(symbol) || symbol === 'USDT') {
-    throw new Error('Use a valid USDT market such as BTCUSDT.');
-  }
-  return symbol;
-}
-
-export function formatPrice(value) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return '—';
-  const digits = number >= 1000 ? 2 : number >= 1 ? 4 : number >= 0.01 ? 6 : 8;
-  return '$' + number.toLocaleString('en-US', {
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  });
-}
-
-export function tickerFromRest(value) {
-  return {
-    symbol: value.symbol,
-    price: Number(value.lastPrice),
-    change: Number(value.priceChangePercent),
-    high: Number(value.highPrice),
-    low: Number(value.lowPrice),
-    volume: Number(value.quoteVolume),
-    timestamp: Number(value.closeTime),
-  };
-}
-
-export function tickerFromStream(value) {
-  return {
-    symbol: value.s,
-    price: Number(value.c),
-    change: Number(value.P),
-    high: Number(value.h),
-    low: Number(value.l),
-    volume: Number(value.q),
-    timestamp: Number(value.E),
-  };
-}
-
-function hex(bytes) {
-  return Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('');
-}
-
-function unhex(value) {
-  if (!/^[0-9a-fA-F]{64}$/.test(value)) {
-    throw new Error('The private seed must be exactly 64 hexadecimal characters.');
-  }
-  return new Uint8Array(value.match(/../g).map((pair) => parseInt(pair, 16)));
-}
-
-function base64url(value) {
-  const padded = value.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(value.length / 4) * 4, '=');
-  if (typeof atob === 'function') return Uint8Array.from(atob(padded), (char) => char.charCodeAt(0));
-  return new Uint8Array(Buffer.from(padded, 'base64'));
-}
-
-function encodeBase64url(bytes) {
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-
-function base58(bytes) {
-  const alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-  let number = 0n;
-  for (const byte of bytes) number = number * 256n + BigInt(byte);
-  let result = '';
-  while (number > 0n) {
-    result = alphabet[Number(number % 58n)] + result;
-    number /= 58n;
-  }
-  for (const byte of bytes) {
-    if (byte !== 0) break;
-    result = '1' + result;
-  }
-  return result || '1';
-}
-
-export async function createIdentity(seedHex, cryptoApi = globalThis.crypto) {
-  if (!cryptoApi?.subtle) throw new Error('Web Crypto is unavailable. Open this app over HTTPS or localhost.');
-  const seed = unhex(seedHex);
-  const encoded = new Uint8Array(PKCS8_ED25519.length + seed.length);
-  encoded.set(PKCS8_ED25519);
-  encoded.set(seed, PKCS8_ED25519.length);
-  const key = await cryptoApi.subtle.importKey('pkcs8', encoded, { name: 'Ed25519' }, true, ['sign']);
-  const jwk = await cryptoApi.subtle.exportKey('jwk', key);
-  const publicBytes = base64url(jwk.x);
-  const tagged = new Uint8Array(publicBytes.length + 2);
-  tagged.set([0xed, 0x01]);
-  tagged.set(publicBytes, 2);
-  const verifyKey = await cryptoApi.subtle.importKey('raw', publicBytes, { name: 'Ed25519' }, true, ['verify']);
-  return {
-    did: 'did:key:z' + base58(tagged),
-    seed: hex(seed),
-    key,
-    verifyKey,
-  };
-}
-
-export function saveIdentitySeed(storage, seed, fallbackStorage = null) {
-  const normalized = String(seed || '').trim().toLowerCase();
-  if (!/^[0-9a-f]{64}$/.test(normalized)) throw new Error('Refusing to store an invalid Ed25519 seed.');
-  try {
-    storage.setItem(SAVED_SEED_KEY, normalized);
-    fallbackStorage?.removeItem(SAVED_SEED_KEY);
-    return 'persistent';
-  } catch (error) {
-    if (!fallbackStorage) throw error;
-    fallbackStorage.setItem(SAVED_SEED_KEY, normalized);
-    return 'session';
-  }
-}
-
-export function loadIdentitySeed(storage, fallbackStorage = null) {
-  for (const candidate of [storage, fallbackStorage]) {
-    if (!candidate) continue;
-    try {
-      const seed = String(candidate.getItem(SAVED_SEED_KEY) || '').trim().toLowerCase();
-      if (/^[0-9a-f]{64}$/.test(seed)) return seed;
-      if (seed) candidate.removeItem(SAVED_SEED_KEY);
-    } catch (_) {
-      // Private browsing policies can disable a storage provider entirely.
-    }
-  }
-  return null;
-}
-
-export function clearIdentitySeed(storage, fallbackStorage = null) {
-  for (const candidate of [storage, fallbackStorage]) {
-    try { candidate?.removeItem(SAVED_SEED_KEY); } catch (_) { /* no-op */ }
-  }
-}
-
-export function canonicalSnapshot(did, tickers, createdAt) {
-  const quotes = [...tickers]
-    .sort((left, right) => left.symbol.localeCompare(right.symbol))
-    .map((ticker) => ({
-      symbol: ticker.symbol,
-      price: String(ticker.price),
-      change24h: String(ticker.change),
-      observedAt: new Date(ticker.timestamp).toISOString(),
-    }));
-  return JSON.stringify({
-    type: 'CryptoPriceSnapshot',
-    version: 1,
-    did,
-    createdAt: new Date(createdAt).toISOString(),
-    source: 'Binance Spot API',
-    quotes,
-  });
-}
-
-export async function signSnapshot(identity, tickers, createdAt = Date.now(), cryptoApi = globalThis.crypto) {
-  const payload = canonicalSnapshot(identity.did, tickers, createdAt);
-  const signature = await cryptoApi.subtle.sign(
-    'Ed25519', identity.key, new TextEncoder().encode(payload),
-  );
-  return JSON.stringify({ payload: JSON.parse(payload), signature: hex(new Uint8Array(signature)) }, null, 2);
-}
-
-export function cleanTechnocoreText(value) {
-  return String(value || '').replace(INVISIBLE, ' ').trim();
-}
-
-export async function signTechnocoreMessage(identity, room, nonce, message, cryptoApi = globalThis.crypto) {
-  if (!identity?.key || !identity?.did) throw new Error('Generate or import a DID first.');
-  const normalizedRoom = String(room || '').trim().toLowerCase();
-  if (!ROOM_RE.test(normalizedRoom)) {
-    throw new Error('Room names must use 1–48 lowercase letters, numbers, underscores, or hyphens.');
-  }
-  const normalizedNonce = String(nonce || '').trim();
-  if (!/^[0-9]{1,19}$/.test(normalizedNonce)) throw new Error('Nonce must contain 1–19 digits.');
-  const text = cleanTechnocoreText(message);
-  if (!text) throw new Error('Write a message before signing.');
-  if (text.length > 4096) throw new Error('Messages cannot exceed 4096 characters.');
-  const canonical = `${normalizedRoom}|${normalizedNonce}|${text}`;
-  const signature = await cryptoApi.subtle.sign(
-    'Ed25519', identity.key, new TextEncoder().encode(canonical),
-  );
-  return {
-    room: normalizedRoom,
-    did: identity.did,
-    sig: encodeBase64url(new Uint8Array(signature)),
-    nonce: normalizedNonce,
-    text,
-    canonical,
-  };
-}
-
-export function buildSignedMessageUrl(origin, signed) {
-  let server;
-  try {
-    server = new URL(String(origin || '').trim());
-  } catch (_) {
-    throw new Error('Enter a valid Technocore server URL.');
-  }
-  const local = server.hostname === 'localhost' || server.hostname === '127.0.0.1';
-  if (server.protocol !== 'https:' && !(local && server.protocol === 'http:')) {
-    throw new Error('The Technocore server must use HTTPS.');
-  }
-  const parts = [signed.room, 'say-signed', signed.did, signed.sig, signed.nonce, signed.text]
-    .map((part) => encodeURIComponent(part));
-  return `${server.origin}/r/${parts.join('/')}`;
-}
-
-const ASSET_ALIASES = {
-  BTC: ['btc', 'bitcoin'],
-  ETH: ['eth', 'ethereum', 'ether'],
-  BNB: ['bnb', 'binance coin'],
-  SOL: ['sol', 'solana'],
-  XRP: ['xrp', 'ripple'],
-  DOGE: ['doge', 'dogecoin'],
-  ADA: ['ada', 'cardano'],
-};
-
-function foldText(value) {
-  return String(value || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/đ/g, 'd')
-    .replace(/Đ/g, 'D')
-    .toLowerCase();
-}
-
-function availableTickers(values) {
-  return [...values].filter((ticker) => ticker
-    && ticker.symbol?.endsWith('USDT')
-    && Number.isFinite(ticker.price)
-    && Number.isFinite(ticker.change));
-}
-
-function mentionedTickers(question, tickers) {
-  const folded = foldText(question);
-  return tickers.filter((ticker) => {
-    const asset = ticker.symbol.slice(0, -4);
-    const aliases = [...(ASSET_ALIASES[asset] || [asset.toLowerCase()]), ticker.symbol.toLowerCase()];
-    return aliases.some((alias) => {
-      const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`).test(folded);
-    });
-  });
-}
-
-function percent(value) {
-  return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
-}
-
-function tickerLine(ticker) {
-  return `${ticker.symbol.slice(0, -4)}: ${formatPrice(ticker.price)} · ${percent(ticker.change)} (24h)`;
-}
-
-export function answerCryptoQuery(question, values) {
-  const tickers = availableTickers(values);
-  if (!tickers.length) {
-    return { intent: 'waiting', text: 'I am waiting for Binance data. Try again in a few seconds.' };
-  }
-  const folded = foldText(question).trim();
-  const selected = mentionedTickers(question, tickers);
-  const help = [
-    'I answer directly from your live Binance watchlist. Try asking:',
-    '• BTC price',
-    '• Top gainers or Top losers',
-    '• Compare BTC and ETH',
-    '• 24h range',
-    '• Which coins are falling?',
-  ].join('\n');
-
-  if (!folded || /^(help|tro giup|xin chao|chao|hello|hi)$/.test(folded)) {
-    return { intent: 'help', text: help };
-  }
-
-  if (/(so sanh|compare|\bvs\b)/.test(folded)) {
-    if (selected.length < 2) {
-      return { intent: 'compare', text: 'Name at least two coins from the watchlist, for example: “Compare BTC and ETH”.' };
-    }
-    const ranked = [...selected].sort((left, right) => right.change - left.change);
-    const lead = ranked[0];
-    return {
-      intent: 'compare',
-      text: `${selected.map(tickerLine).join('\n')}\n${lead.symbol.slice(0, -4)} has the best 24h performance in this group.`,
-    };
-  }
-
-  if (/(coin nao|which|top|dang giam|giam manh|loser|worst|falling|\bdown\b)/.test(folded)
-      && /(giam|loser|worst|falling|\bdown\b)/.test(folded)) {
-    const falling = tickers.filter((ticker) => ticker.change < 0).sort((left, right) => left.change - right.change);
-    return {
-      intent: 'losers',
-      text: falling.length
-        ? `Coins falling in the watchlist:\n${falling.map(tickerLine).join('\n')}`
-        : 'No coin in the watchlist is down over the current 24h window.',
-    };
-  }
-
-  if (/(top|tang manh|gainer|best|rising|\bup\b)/.test(folded)
-      && /(tang|gainer|best|rising|\bup\b)/.test(folded)) {
-    const rising = tickers.filter((ticker) => ticker.change >= 0)
-      .sort((left, right) => right.change - left.change)
-      .slice(0, 3);
-    return {
-      intent: 'gainers',
-      text: rising.length
-        ? `Top 24h gainers in the watchlist:\n${rising.map(tickerLine).join('\n')}`
-        : 'No coin in the watchlist is up over the current 24h window.',
-    };
-  }
-
-  if (/(bien dong|24 ?h|range|cao nhat|thap nhat)/.test(folded)) {
-    const targets = selected.length ? selected : tickers;
-    const lines = targets.map((ticker) => {
-      const spread = ticker.low > 0 ? ((ticker.high - ticker.low) / ticker.low) * 100 : 0;
-      return `${ticker.symbol.slice(0, -4)}: low ${formatPrice(ticker.low)} · high ${formatPrice(ticker.high)} · range ${spread.toFixed(2)}%`;
-    });
-    return { intent: 'range', text: `24h range:\n${lines.join('\n')}` };
-  }
-
-  if (/(gia|price|bao nhieu)/.test(folded) || selected.length) {
-    const targets = selected.length ? selected : tickers;
-    return { intent: 'price', text: targets.map(tickerLine).join('\n') };
-  }
-
-  return { intent: 'help', text: help };
-}
-
-export function buildPeriodicReport(values, now = Date.now()) {
-  const tickers = availableTickers(values);
-  if (!tickers.length) return 'Chưa có dữ liệu Binance để lập báo cáo.';
-  const ranked = [...tickers].sort((left, right) => right.change - left.change);
-  const rising = tickers.filter((ticker) => ticker.change >= 0).length;
-  const falling = tickers.length - rising;
-  const time = new Date(now).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-  return [
-    `Automated report at ${time}`,
-    `Best performer: ${tickerLine(ranked[0])}`,
-    `Weakest performer: ${tickerLine(ranked[ranked.length - 1])}`,
-    `Watchlist: ${rising} up/flat · ${falling} down`,
-    '',
-    ...tickers.map(tickerLine),
-  ].join('\n');
-}
+export {
+  canonicalSnapshot,
+  clearIdentitySeed,
+  createIdentity,
+  loadIdentitySeed,
+  loadIdentityVault,
+  removeIdentityFromVault,
+  saveIdentityToVault,
+  saveIdentitySeed,
+  signSnapshot,
+  unlockIdentityFromVault,
+} from './identity.mjs';
+export {
+  answerCryptoQuery,
+  buildPeriodicReport,
+  formatPrice,
+  normalizeSymbol,
+  tickerFromRest,
+  tickerFromStream,
+} from './market.mjs';
+export {
+  buildSignedMessageUrl,
+  cleanTechnocoreText,
+  listTechnocoreRooms,
+  normalizeTechnocoreOrigin,
+  normalizeRoom,
+  postSignedTechnocoreMessage,
+  readTechnocoreRoom,
+  signTechnocoreMessage,
+} from './technocore.mjs';
 
 function startApp() {
   const elements = {
@@ -363,6 +71,14 @@ function startApp() {
     did: document.getElementById('did'),
     identityState: document.getElementById('identity-state'),
     identityMessage: document.getElementById('identity-message'),
+    vaultState: document.getElementById('vault-state'),
+    vaultIdentities: document.getElementById('vault-identities'),
+    identityLabel: document.getElementById('identity-label'),
+    vaultPassphrase: document.getElementById('vault-passphrase'),
+    vaultMessage: document.getElementById('vault-message'),
+    hostState: document.getElementById('host-state'),
+    hostDid: document.getElementById('host-did'),
+    hostMessage: document.getElementById('host-message'),
     marketStatus: document.getElementById('market-status'),
     liveDot: document.getElementById('live-dot'),
     marketMessage: document.getElementById('market-message'),
@@ -372,6 +88,12 @@ function startApp() {
     agentQuestion: document.getElementById('agent-question'),
     reportInterval: document.getElementById('report-interval'),
     reportStatus: document.getElementById('report-status'),
+    roomConnectionState: document.getElementById('room-connection-state'),
+    roomSelect: document.getElementById('room-select'),
+    chatRoom: document.getElementById('chat-room'),
+    roomStatus: document.getElementById('room-status'),
+    roomCursor: document.getElementById('room-cursor'),
+    roomLog: document.getElementById('room-log'),
     technocoreOrigin: document.getElementById('technocore-origin'),
     technocoreRoom: document.getElementById('technocore-room'),
     technocoreMessage: document.getElementById('technocore-message'),
@@ -385,21 +107,30 @@ function startApp() {
     copySeed: document.getElementById('copy-seed'),
     downloadSeed: document.getElementById('download-seed'),
     forget: document.getElementById('forget-did'),
+    saveVault: document.getElementById('save-vault'),
+    unlockVault: document.getElementById('unlock-vault'),
+    removeVault: document.getElementById('remove-vault'),
     useAgentAnswer: document.getElementById('use-agent-answer'),
+    refreshRooms: document.getElementById('refresh-rooms'),
+    connectRoom: document.getElementById('connect-room'),
     signTechnocore: document.getElementById('sign-technocore'),
+    postTechnocore: document.getElementById('post-technocore'),
     copySignedUrl: document.getElementById('copy-signed-url'),
     openSignedUrl: document.getElementById('open-signed-url'),
   };
   let identity = null;
+  let hostDid = '';
   let tickers = new Map();
   let socket = null;
   let streamGeneration = 0;
   let reconnectTimer = null;
   let latestAgentAnswer = '';
-  let lastNonce = 0;
   let reportTimer = null;
   let nextReportAt = 0;
   let reportCountdown = null;
+  let roomAbort = null;
+  let activeRoom = '';
+  let roomCursor = 0;
 
   function loadWatchlist() {
     try {
@@ -568,36 +299,267 @@ function startApp() {
     marketChanged();
   }
 
+  function setRoomState(label, detail, { active = false, error = false } = {}) {
+    elements.roomConnectionState.textContent = label;
+    elements.roomConnectionState.classList.toggle('active', active);
+    elements.roomStatus.textContent = detail;
+    elements.roomStatus.classList.toggle('error', error);
+  }
+
+  function updateRoomCursor(value) {
+    roomCursor = Math.max(roomCursor, Number(value) || 0);
+    elements.roomCursor.textContent = roomCursor ? `Sequence ${roomCursor}` : 'Sequence —';
+  }
+
+  function showEmptyRoom() {
+    elements.roomLog.textContent = '';
+    const empty = document.createElement('p');
+    empty.className = 'room-empty';
+    empty.textContent = 'No messages in this room yet.';
+    elements.roomLog.appendChild(empty);
+  }
+
+  function applyRoomView(view, { reset = false } = {}) {
+    const messages = Array.isArray(view?.messages) ? view.messages : [];
+    const previous = roomCursor;
+    if (reset && !messages.length) showEmptyRoom();
+    else renderRoomMessages(elements.roomLog, messages, { reset, hostDid });
+    if (previous && messages.length && Number(messages[0].seq) > previous + 1) {
+      setRoomState(
+        'Connected',
+        `History gap detected before sequence ${messages[0].seq}; older records left the room ring.`,
+        { active: true, error: true },
+      );
+    }
+    for (const message of messages) updateRoomCursor(message.seq);
+    updateRoomCursor(view?.last_seq);
+  }
+
+  function waitBeforeRoomRetry(milliseconds, signal) {
+    return new Promise((resolve) => {
+      const timer = setTimeout(resolve, milliseconds);
+      signal.addEventListener('abort', () => {
+        clearTimeout(timer);
+        resolve();
+      }, { once: true });
+    });
+  }
+
+  async function pollRoom(room, controller) {
+    while (!controller.signal.aborted && activeRoom === room) {
+      try {
+        const view = await readTechnocoreRoom(room, {
+          since: roomCursor,
+          wait: 10,
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted || activeRoom !== room) return;
+        applyRoomView(view);
+        setRoomState('Connected', `Waiting for signed or unsigned messages in /r/${room}.`, {
+          active: true,
+        });
+      } catch (error) {
+        if (controller.signal.aborted || error.name === 'AbortError') return;
+        const retry = error.retryAfter ? error.retryAfter * 1000 : 2000;
+        const reason = String(error.message || error).split('\n')[0].slice(0, 180);
+        setRoomState('Reconnecting', `${reason} Retrying shortly.`, { error: true });
+        await waitBeforeRoomRetry(retry, controller.signal);
+      }
+    }
+  }
+
+  async function connectRoom() {
+    let room;
+    try {
+      room = normalizeRoom(elements.chatRoom.value);
+    } catch (error) {
+      setRoomState('Disconnected', error.message, { error: true });
+      return;
+    }
+    roomAbort?.abort();
+    const controller = new AbortController();
+    roomAbort = controller;
+    activeRoom = room;
+    roomCursor = 0;
+    elements.roomCursor.textContent = 'Sequence —';
+    elements.chatRoom.value = room;
+    elements.technocoreRoom.value = room;
+    setRoomState('Connecting', `Loading /r/${room} history…`);
+    try {
+      const view = await readTechnocoreRoom(room, { limit: 50, signal: controller.signal });
+      if (controller.signal.aborted || activeRoom !== room) return;
+      applyRoomView(view, { reset: true });
+      setRoomState('Connected', `Waiting for new messages in /r/${room}.`, { active: true });
+      void pollRoom(room, controller);
+    } catch (error) {
+      if (controller.signal.aborted || error.name === 'AbortError') return;
+      activeRoom = '';
+      const reason = String(error.message || error).split('\n')[0].slice(0, 180);
+      setRoomState('Disconnected', reason, { error: true });
+    }
+  }
+
+  async function refreshRoomDirectory() {
+    buttons.refreshRooms.disabled = true;
+    try {
+      const view = await listTechnocoreRooms({ limit: 50 });
+      const rooms = Array.isArray(view?.rooms) ? view.rooms : [];
+      populateRoomOptions(elements.roomSelect, rooms, activeRoom || elements.chatRoom.value);
+      setRoomState(
+        activeRoom ? 'Connected' : 'Disconnected',
+        `Loaded ${rooms.length} of ${Number(view?.total) || rooms.length} public rooms.`,
+        { active: Boolean(activeRoom) },
+      );
+    } catch (error) {
+      setRoomState('Disconnected', String(error.message || error).split('\n')[0], { error: true });
+    } finally {
+      buttons.refreshRooms.disabled = false;
+    }
+  }
+
+  function refreshVaultOptions(preferredDid = identity?.did || '') {
+    const vault = loadIdentityVault(localStorage);
+    elements.vaultIdentities.textContent = '';
+    if (!vault.identities.length) {
+      const empty = document.createElement('option');
+      empty.value = '';
+      empty.textContent = 'No encrypted identities';
+      elements.vaultIdentities.appendChild(empty);
+    } else {
+      for (const record of vault.identities) {
+        const option = document.createElement('option');
+        option.value = record.did;
+        option.textContent = `${record.label} — ${record.did.slice(8, 14)}…${record.did.slice(-6)}`;
+        if (record.did === preferredDid || (!preferredDid && record.did === vault.activeDid)) {
+          option.selected = true;
+        }
+        elements.vaultIdentities.appendChild(option);
+      }
+    }
+    const hasSaved = Boolean(elements.vaultIdentities.value);
+    elements.vaultState.textContent = vault.identities.length
+      ? `${vault.identities.length} saved`
+      : 'Empty';
+    elements.vaultState.classList.toggle('active', vault.identities.length > 0);
+    buttons.unlockVault.disabled = !hasSaved;
+    buttons.removeVault.disabled = !hasSaved;
+    buttons.saveVault.disabled = !identity;
+  }
+
+  async function saveActiveIdentityToVault() {
+    if (!identity) return;
+    buttons.saveVault.disabled = true;
+    elements.vaultMessage.textContent = 'Encrypting identity…';
+    try {
+      const record = await saveIdentityToVault(
+        localStorage,
+        identity,
+        elements.vaultPassphrase.value,
+        elements.identityLabel.value,
+      );
+      clearIdentitySeed(localStorage);
+      elements.vaultPassphrase.value = '';
+      refreshVaultOptions(record.did);
+      elements.vaultMessage.textContent = `${record.label} was encrypted and saved in this browser.`;
+      elements.identityMessage.textContent = 'Active for this tab and protected by the encrypted vault after refresh.';
+    } catch (error) {
+      elements.vaultMessage.textContent = error.message;
+    } finally {
+      buttons.saveVault.disabled = !identity;
+    }
+  }
+
+  async function unlockSelectedIdentity() {
+    const did = elements.vaultIdentities.value;
+    if (!did) return;
+    buttons.unlockVault.disabled = true;
+    elements.vaultMessage.textContent = 'Unlocking identity…';
+    try {
+      const unlocked = await unlockIdentityFromVault(
+        localStorage, did, elements.vaultPassphrase.value,
+      );
+      await activateSeed(unlocked.seed);
+      elements.vaultPassphrase.value = '';
+      refreshVaultOptions(unlocked.did);
+      elements.vaultMessage.textContent = 'Encrypted identity unlocked for this tab.';
+    } catch (error) {
+      elements.vaultMessage.textContent = error.message;
+    } finally {
+      buttons.unlockVault.disabled = !elements.vaultIdentities.value;
+    }
+  }
+
+  function removeSelectedVaultIdentity() {
+    const did = elements.vaultIdentities.value;
+    if (!did) return;
+    if (!window.confirm('Delete this encrypted identity from this browser? Export its seed first if you need it.')) {
+      return;
+    }
+    removeIdentityFromVault(localStorage, did);
+    refreshVaultOptions();
+    elements.vaultMessage.textContent = 'Encrypted identity deleted from this browser.';
+  }
+
+  async function loadHostIdentity() {
+    try {
+      const response = await fetch('/api/host', { headers: { Accept: 'application/json' } });
+      if (!response.ok) throw new Error(`Host API returned HTTP ${response.status}`);
+      const value = await response.json();
+      if (!value.configured || !/^did:key:z6Mk[1-9A-HJ-NP-Za-km-z]{44}$/.test(value.did || '')) {
+        throw new Error('Configure HOST_DID after the VPS Host identity is created.');
+      }
+      hostDid = value.did;
+      elements.hostDid.value = hostDid;
+      elements.hostState.textContent = 'Configured';
+      elements.hostState.classList.add('active');
+      elements.hostMessage.textContent = `${value.name || 'Signal ID Host'} responses are highlighted only when signed by this DID.`;
+    } catch (error) {
+      hostDid = '';
+      elements.hostState.textContent = 'Not configured';
+      elements.hostState.classList.remove('active');
+      elements.hostMessage.textContent = error.message;
+    }
+  }
+
   async function activateSeed(seed) {
     elements.identityMessage.textContent = 'Deriving Ed25519 public key…';
     try {
-      identity = await createIdentity(seed);
-      lastNonce = 0;
+      const nextIdentity = await createIdentity(seed);
+      identity = nextIdentity;
       invalidateSignedMessage();
       elements.seed.value = identity.seed;
       elements.did.value = identity.did;
       elements.identityState.textContent = 'Ready';
       elements.identityState.classList.add('active');
       try {
-        const storageMode = saveIdentitySeed(localStorage, identity.seed, sessionStorage);
-        elements.identityMessage.textContent = storageMode === 'persistent'
-          ? 'Saved on this browser. The same DID returns after refresh.'
-          : 'Saved for this tab because persistent browser storage is unavailable.';
+        saveIdentitySeed(sessionStorage, identity.seed);
+        elements.identityMessage.textContent = 'Active for this tab. Save it encrypted to restore it after refresh.';
       } catch (_) {
         elements.identityMessage.textContent = 'DID is active, but this browser blocked local storage.';
       }
-      for (const button of [buttons.copyDid, buttons.copySeed, buttons.downloadSeed, buttons.forget, buttons.signTechnocore]) {
+      for (const button of [buttons.copyDid, buttons.copySeed, buttons.downloadSeed, buttons.forget,
+        buttons.signTechnocore, buttons.postTechnocore]) {
         button.disabled = false;
       }
+      buttons.saveVault.disabled = false;
+      refreshVaultOptions(identity.did);
       elements.publishStatus.textContent = 'DID ready. Write and sign a message.';
       elements.publishStatus.classList.remove('error');
     } catch (error) {
-      identity = null;
-      elements.identityMessage.textContent = error.message;
+      elements.identityMessage.textContent = identity
+        ? `${error.message} The current DID is unchanged.`
+        : error.message;
+      if (identity) elements.seed.value = identity.seed;
     }
   }
 
   function forgetIdentity() {
+    const did = identity?.did || '';
+    const saved = loadIdentityVault(localStorage).identities.some((record) => record.did === did);
+    if (saved && !window.confirm('Remove the active DID and its encrypted vault copy from this browser?')) {
+      return;
+    }
+    if (did) removeIdentityFromVault(localStorage, did);
     identity = null;
     clearIdentitySeed(localStorage, sessionStorage);
     elements.seed.value = '';
@@ -607,11 +569,14 @@ function startApp() {
     elements.identityState.classList.remove('active');
     elements.identityMessage.textContent = 'Private key material was removed from this browser.';
     for (const button of [buttons.copyDid, buttons.copySeed, buttons.downloadSeed, buttons.forget,
-      buttons.signTechnocore, buttons.copySignedUrl, buttons.openSignedUrl]) button.disabled = true;
+      buttons.signTechnocore, buttons.postTechnocore, buttons.copySignedUrl,
+      buttons.openSignedUrl]) button.disabled = true;
+    buttons.saveVault.disabled = true;
     elements.technocoreNonce.value = '';
     elements.technocoreSignature.value = '';
     elements.signedUrl.value = '';
     elements.publishStatus.textContent = 'Private key material was removed from this browser.';
+    refreshVaultOptions();
   }
 
   async function copyText(value, message, statusElement = elements.identityMessage) {
@@ -646,6 +611,25 @@ function startApp() {
     if (identity) elements.publishStatus.textContent = 'Message changed. Sign it to generate a new URL.';
   }
 
+  async function prepareSignedMessage() {
+    if (!identity) throw new Error('Generate or import a DID first.');
+    const origin = elements.technocoreOrigin.value;
+    const room = normalizeRoom(elements.technocoreRoom.value);
+    const nonce = nextTechnocoreNonce(localStorage, origin, identity.did, room);
+    const signed = await signTechnocoreMessage(
+      identity, room, nonce, elements.technocoreMessage.value,
+    );
+    const url = buildSignedMessageUrl(origin, signed);
+    saveTechnocoreNonce(localStorage, origin, identity.did, room, signed.nonce);
+    elements.technocoreRoom.value = signed.room;
+    elements.chatRoom.value = signed.room;
+    elements.technocoreMessage.value = signed.text;
+    elements.technocoreNonce.value = signed.nonce;
+    elements.technocoreSignature.value = signed.sig;
+    elements.signedUrl.value = url;
+    return { signed, url };
+  }
+
   function currentTickers() {
     return symbols.map((symbol) => tickers.get(symbol)).filter(Boolean);
   }
@@ -655,7 +639,7 @@ function startApp() {
     message.className = `agent-message ${role}`;
     const meta = document.createElement('p');
     meta.className = 'agent-message-meta';
-    meta.textContent = role === 'user' ? 'You' : 'Technocore Agent';
+    meta.textContent = role === 'user' ? 'You' : 'Browser Agent';
     const bubble = document.createElement('p');
     bubble.className = 'agent-bubble';
     bubble.textContent = text;
@@ -729,6 +713,14 @@ function startApp() {
   buttons.copySeed.addEventListener('click', () => identity && copyText(identity.seed, 'Private seed copied. Keep it secret.'));
   buttons.downloadSeed.addEventListener('click', downloadIdentity);
   buttons.forget.addEventListener('click', forgetIdentity);
+  buttons.saveVault.addEventListener('click', saveActiveIdentityToVault);
+  buttons.unlockVault.addEventListener('click', unlockSelectedIdentity);
+  buttons.removeVault.addEventListener('click', removeSelectedVaultIdentity);
+  elements.vaultIdentities.addEventListener('change', () => {
+    const selected = loadIdentityVault(localStorage).identities
+      .find((record) => record.did === elements.vaultIdentities.value);
+    if (selected) elements.identityLabel.value = selected.label;
+  });
 
   document.getElementById('symbol-form').addEventListener('submit', (event) => {
     event.preventDefault();
@@ -745,6 +737,16 @@ function startApp() {
     }
   });
   document.getElementById('refresh').addEventListener('click', refreshMarket);
+  buttons.refreshRooms.addEventListener('click', refreshRoomDirectory);
+  buttons.connectRoom.addEventListener('click', connectRoom);
+  elements.roomSelect.addEventListener('change', () => {
+    if (!elements.roomSelect.value) return;
+    elements.chatRoom.value = elements.roomSelect.value;
+    elements.technocoreRoom.value = elements.roomSelect.value;
+  });
+  elements.chatRoom.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') connectRoom();
+  });
   document.getElementById('agent-form').addEventListener('submit', (event) => {
     event.preventDefault();
     askAgent(elements.agentQuestion.value);
@@ -764,18 +766,8 @@ function startApp() {
   }
   buttons.signTechnocore.addEventListener('click', async () => {
     if (!identity) return;
-    const nonce = String(Math.max(Date.now(), lastNonce + 1));
     try {
-      const signed = await signTechnocoreMessage(
-        identity, elements.technocoreRoom.value, nonce, elements.technocoreMessage.value,
-      );
-      const url = buildSignedMessageUrl(elements.technocoreOrigin.value, signed);
-      lastNonce = Number(signed.nonce);
-      elements.technocoreRoom.value = signed.room;
-      elements.technocoreMessage.value = signed.text;
-      elements.technocoreNonce.value = signed.nonce;
-      elements.technocoreSignature.value = signed.sig;
-      elements.signedUrl.value = url;
+      await prepareSignedMessage();
       buttons.copySignedUrl.disabled = false;
       buttons.openSignedUrl.disabled = false;
       elements.publishStatus.textContent = 'Message signed. Copy or open the URL to publish it.';
@@ -785,17 +777,52 @@ function startApp() {
       elements.publishStatus.classList.add('error');
     }
   });
+  buttons.postTechnocore.addEventListener('click', async () => {
+    if (!identity) return;
+    buttons.postTechnocore.disabled = true;
+    elements.publishStatus.textContent = 'Signing and posting…';
+    elements.publishStatus.classList.remove('error');
+    try {
+      const { signed } = await prepareSignedMessage();
+      const view = await postSignedTechnocoreMessage(signed);
+      const sequence = Number(view?.posted?.seq);
+      if (!Number.isInteger(sequence) || sequence < 1) {
+        throw new Error('Technocore accepted the request but returned no posted sequence.');
+      }
+      buttons.copySignedUrl.disabled = true;
+      buttons.openSignedUrl.disabled = true;
+      elements.signedUrl.value = '';
+      elements.publishStatus.textContent = `Posted as sequence #${sequence} by ${identity.did}.`;
+    } catch (error) {
+      buttons.copySignedUrl.disabled = !elements.signedUrl.value;
+      buttons.openSignedUrl.disabled = !elements.signedUrl.value;
+      elements.publishStatus.textContent = `Post failed: ${String(error.message || error).split('\n')[0]}`;
+      elements.publishStatus.classList.add('error');
+    } finally {
+      buttons.postTechnocore.disabled = false;
+    }
+  });
   buttons.copySignedUrl.addEventListener('click', () => {
     if (elements.signedUrl.value) copyText(elements.signedUrl.value, 'Signed URL copied.', elements.publishStatus);
   });
   buttons.openSignedUrl.addEventListener('click', () => {
     if (!elements.signedUrl.value) return;
-    window.open(elements.signedUrl.value, '_blank', 'noopener,noreferrer');
+    const opened = window.open(elements.signedUrl.value, '_blank', 'noopener,noreferrer');
+    if (!opened) {
+      elements.publishStatus.textContent = 'The browser blocked the new tab. Allow popups or copy the signed URL.';
+      elements.publishStatus.classList.add('error');
+      return;
+    }
+    elements.signedUrl.value = '';
+    buttons.copySignedUrl.disabled = true;
+    buttons.openSignedUrl.disabled = true;
     elements.publishStatus.textContent = 'Opened Technocore in a new tab. Read the number in [brackets] to get your sequence.';
     elements.publishStatus.classList.remove('error');
   });
 
   renderMarket();
+  refreshVaultOptions();
+  loadHostIdentity();
   addAgentMessage('agent', 'Hello. I track the live Binance data in your watchlist. Try “BTC price” or “Top losers”.');
   const savedSeed = loadIdentitySeed(localStorage, sessionStorage);
   if (savedSeed) {
@@ -804,6 +831,8 @@ function startApp() {
   }
   refreshMarket();
   connectStream();
+  refreshRoomDirectory();
+  window.addEventListener('pagehide', () => roomAbort?.abort());
 }
 
 if (typeof document !== 'undefined') startApp();

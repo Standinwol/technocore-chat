@@ -1,0 +1,36 @@
+[Unit]
+Description=Signal ID outbound Technocore Host Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=signal-id
+Group=signal-id
+WorkingDirectory=/opt/technocore-chat
+EnvironmentFile=/etc/signal-id-agent.env
+ExecStart=/opt/technocore-chat/.venv/bin/python -m agent run
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+UMask=0077
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/var/lib/signal-id-agent
+MemoryMax=256M
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target
