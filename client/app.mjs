@@ -625,7 +625,7 @@ function startApp() {
   buttons.copySnapshot.addEventListener('click', () => signedSnapshot && copyText(signedSnapshot, 'Signed snapshot JSON copied.'));
 
   renderMarket();
-  addAgentMessage('agent', 'Hello. I am a rule-based agent: no OpenAI, and every answer comes from the Binance data in your watchlist. Try “BTC price” or “Top losers”.');
+  addAgentMessage('agent', 'Hello. I track the live Binance data in your watchlist. Try “BTC price” or “Top losers”.');
   refreshMarket();
   connectStream();
 }
