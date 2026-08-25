@@ -182,17 +182,17 @@ function tickerLine(ticker) {
 export function answerCryptoQuery(question, values) {
   const tickers = availableTickers(values);
   if (!tickers.length) {
-    return { intent: 'waiting', text: 'Mình đang chờ dữ liệu Binance. Hãy thử lại sau vài giây.' };
+    return { intent: 'waiting', text: 'I am waiting for Binance data. Try again in a few seconds.' };
   }
   const folded = foldText(question).trim();
   const selected = mentionedTickers(question, tickers);
   const help = [
-    'Mình trả lời trực tiếp từ watchlist Binance đang live. Bạn có thể hỏi:',
-    '• Giá BTC',
-    '• Top tăng hoặc Top giảm',
-    '• So sánh BTC và ETH',
-    '• Biến động 24 giờ',
-    '• Coin nào trong watchlist đang giảm?',
+    'I answer directly from your live Binance watchlist. Try asking:',
+    '• BTC price',
+    '• Top gainers or Top losers',
+    '• Compare BTC and ETH',
+    '• 24h range',
+    '• Which coins are falling?',
   ].join('\n');
 
   if (!folded || /^(help|tro giup|xin chao|chao|hello|hi)$/.test(folded)) {
@@ -201,13 +201,13 @@ export function answerCryptoQuery(question, values) {
 
   if (/(so sanh|compare|\bvs\b)/.test(folded)) {
     if (selected.length < 2) {
-      return { intent: 'compare', text: 'Hãy nêu ít nhất hai coin trong watchlist, ví dụ: “So sánh BTC và ETH”.' };
+      return { intent: 'compare', text: 'Name at least two coins from the watchlist, for example: “Compare BTC and ETH”.' };
     }
     const ranked = [...selected].sort((left, right) => right.change - left.change);
     const lead = ranked[0];
     return {
       intent: 'compare',
-      text: `${selected.map(tickerLine).join('\n')}\n${lead.symbol.slice(0, -4)} đang có hiệu suất 24h tốt nhất trong nhóm này.`,
+      text: `${selected.map(tickerLine).join('\n')}\n${lead.symbol.slice(0, -4)} has the best 24h performance in this group.`,
     };
   }
 
@@ -217,8 +217,8 @@ export function answerCryptoQuery(question, values) {
     return {
       intent: 'losers',
       text: falling.length
-        ? `Các coin đang giảm trong watchlist:\n${falling.map(tickerLine).join('\n')}`
-        : 'Hiện không có coin nào trong watchlist giảm trong cửa sổ 24h.',
+        ? `Coins falling in the watchlist:\n${falling.map(tickerLine).join('\n')}`
+        : 'No coin in the watchlist is down over the current 24h window.',
     };
   }
 
@@ -230,8 +230,8 @@ export function answerCryptoQuery(question, values) {
     return {
       intent: 'gainers',
       text: rising.length
-        ? `Top tăng 24h trong watchlist:\n${rising.map(tickerLine).join('\n')}`
-        : 'Hiện không có coin nào trong watchlist tăng trong cửa sổ 24h.',
+        ? `Top 24h gainers in the watchlist:\n${rising.map(tickerLine).join('\n')}`
+        : 'No coin in the watchlist is up over the current 24h window.',
     };
   }
 
@@ -239,9 +239,9 @@ export function answerCryptoQuery(question, values) {
     const targets = selected.length ? selected : tickers;
     const lines = targets.map((ticker) => {
       const spread = ticker.low > 0 ? ((ticker.high - ticker.low) / ticker.low) * 100 : 0;
-      return `${ticker.symbol.slice(0, -4)}: thấp ${formatPrice(ticker.low)} · cao ${formatPrice(ticker.high)} · biên độ ${spread.toFixed(2)}%`;
+      return `${ticker.symbol.slice(0, -4)}: low ${formatPrice(ticker.low)} · high ${formatPrice(ticker.high)} · range ${spread.toFixed(2)}%`;
     });
-    return { intent: 'range', text: `Biến động 24 giờ:\n${lines.join('\n')}` };
+    return { intent: 'range', text: `24h range:\n${lines.join('\n')}` };
   }
 
   if (/(gia|price|bao nhieu)/.test(folded) || selected.length) {
@@ -258,12 +258,12 @@ export function buildPeriodicReport(values, now = Date.now()) {
   const ranked = [...tickers].sort((left, right) => right.change - left.change);
   const rising = tickers.filter((ticker) => ticker.change >= 0).length;
   const falling = tickers.length - rising;
-  const time = new Date(now).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+  const time = new Date(now).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
   return [
-    `Báo cáo tự động lúc ${time}`,
-    `Mạnh nhất: ${tickerLine(ranked[0])}`,
-    `Yếu nhất: ${tickerLine(ranked[ranked.length - 1])}`,
-    `Watchlist: ${rising} tăng/đứng · ${falling} giảm`,
+    `Automated report at ${time}`,
+    `Best performer: ${tickerLine(ranked[0])}`,
+    `Weakest performer: ${tickerLine(ranked[ranked.length - 1])}`,
+    `Watchlist: ${rising} up/flat · ${falling} down`,
     '',
     ...tickers.map(tickerLine),
   ].join('\n');
@@ -565,7 +565,7 @@ function startApp() {
       nextReportAt = Date.now() + delay;
       updateReportStatus();
     }, delay);
-    addAgentMessage('agent', `Đã bật báo cáo tự động mỗi ${minutes} phút. Báo cáo chỉ chạy khi trang này đang mở.`);
+    addAgentMessage('agent', `Automatic reports are on every ${minutes} minutes. They run only while this page is open.`);
   }
 
   document.getElementById('generate-did').addEventListener('click', () => {
@@ -625,7 +625,7 @@ function startApp() {
   buttons.copySnapshot.addEventListener('click', () => signedSnapshot && copyText(signedSnapshot, 'Signed snapshot JSON copied.'));
 
   renderMarket();
-  addAgentMessage('agent', 'Xin chào. Mình là agent rule-based: không dùng OpenAI và chỉ trả lời từ dữ liệu Binance trong watchlist. Hãy thử “Giá BTC” hoặc “Top giảm”.');
+  addAgentMessage('agent', 'Hello. I am a rule-based agent: no OpenAI, and every answer comes from the Binance data in your watchlist. Try “BTC price” or “Top losers”.');
   refreshMarket();
   connectStream();
 }

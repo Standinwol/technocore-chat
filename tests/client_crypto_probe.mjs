@@ -46,25 +46,25 @@ const agentTickers = [
   { symbol: 'ETHUSDT', price: 10, change: -1.25, high: 11, low: 9, timestamp: 1700000001000 },
   { symbol: 'SOLUSDT', price: 5, change: 4, high: 5.5, low: 4.5, timestamp: 1700000002000 },
 ];
-assert.equal(answerCryptoQuery('Giá BTC', agentTickers).intent, 'price');
-assert.match(answerCryptoQuery('Giá BTC', agentTickers).text, /BTC: \$100\.0000 · \+2\.50%/);
+assert.equal(answerCryptoQuery('BTC price', agentTickers).intent, 'price');
+assert.match(answerCryptoQuery('BTC price', agentTickers).text, /BTC: \$100\.0000 · \+2\.50%/);
 assert.match(answerCryptoQuery('price BTCUSDT', agentTickers).text, /BTC: \$100\.0000/);
-assert.equal(answerCryptoQuery('So sánh BTC và ETH', agentTickers).intent, 'compare');
-assert.match(answerCryptoQuery('So sánh BTC và ETH', agentTickers).text, /BTC đang có hiệu suất/);
-assert.equal(answerCryptoQuery('Coin nào trong watchlist đang giảm?', agentTickers).intent, 'losers');
-assert.match(answerCryptoQuery('Coin nào trong watchlist đang giảm?', agentTickers).text, /ETH/);
-assert.doesNotMatch(answerCryptoQuery('Coin nào trong watchlist đang giảm?', agentTickers).text, /SOL:/);
+assert.equal(answerCryptoQuery('Compare BTC and ETH', agentTickers).intent, 'compare');
+assert.match(answerCryptoQuery('Compare BTC and ETH', agentTickers).text, /BTC has the best 24h performance/);
+assert.equal(answerCryptoQuery('Which coins are falling?', agentTickers).intent, 'losers');
+assert.match(answerCryptoQuery('Which coins are falling?', agentTickers).text, /ETH/);
+assert.doesNotMatch(answerCryptoQuery('Which coins are falling?', agentTickers).text, /SOL:/);
 assert.equal(answerCryptoQuery('which coin is falling?', agentTickers).intent, 'losers');
-assert.equal(answerCryptoQuery('Top tăng', agentTickers).intent, 'gainers');
-assert.match(answerCryptoQuery('Top tăng', agentTickers).text, /SOL:[\s\S]*BTC:/);
-assert.doesNotMatch(answerCryptoQuery('Top tăng', agentTickers).text, /ETH:/);
-assert.equal(answerCryptoQuery('Biến động 24 giờ của ETH', agentTickers).intent, 'range');
-assert.match(answerCryptoQuery('Biến động 24 giờ của ETH', agentTickers).text, /biên độ 22\.22%/);
+assert.equal(answerCryptoQuery('Top gainers', agentTickers).intent, 'gainers');
+assert.match(answerCryptoQuery('Top gainers', agentTickers).text, /SOL:[\s\S]*BTC:/);
+assert.doesNotMatch(answerCryptoQuery('Top gainers', agentTickers).text, /ETH:/);
+assert.equal(answerCryptoQuery('24h range for ETH', agentTickers).intent, 'range');
+assert.match(answerCryptoQuery('24h range for ETH', agentTickers).text, /range 22\.22%/);
 const report = buildPeriodicReport(agentTickers, 1700000005000);
-assert.match(report, /Báo cáo tự động/);
-assert.match(report, /Mạnh nhất: SOL/);
-assert.match(report, /Yếu nhất: ETH/);
-assert.match(report, /2 tăng\/đứng · 1 giảm/);
+assert.match(report, /Automated report/);
+assert.match(report, /Best performer: SOL/);
+assert.match(report, /Weakest performer: ETH/);
+assert.match(report, /2 up\/flat · 1 down/);
 
 const html = readFileSync(new URL('../client/index.html', import.meta.url), 'utf8');
 const ids = [...html.matchAll(/\sid="([^"]+)"/g)].map((match) => match[1]);

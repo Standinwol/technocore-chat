@@ -83,15 +83,15 @@
 
       <div class="agent-layout panel">
         <aside class="agent-controls">
-          <p class="agent-description">Ask in Vietnamese or English. The agent answers only from
-            the live Binance tickers in your watchlist — no LLM and no invented market data.</p>
+          <p class="agent-description">Ask in plain English. The agent answers only from the live
+            Binance tickers in your watchlist — no LLM and no invented market data.</p>
           <div class="prompt-list" aria-label="Suggested questions">
-            <button class="prompt-chip" type="button" data-agent-prompt="Giá BTC">Giá BTC</button>
-            <button class="prompt-chip" type="button" data-agent-prompt="Top tăng">Top tăng</button>
-            <button class="prompt-chip" type="button" data-agent-prompt="Top giảm">Top giảm</button>
-            <button class="prompt-chip" type="button" data-agent-prompt="So sánh BTC và ETH">So sánh BTC và ETH</button>
-            <button class="prompt-chip" type="button" data-agent-prompt="Biến động 24 giờ">Biến động 24 giờ</button>
-            <button class="prompt-chip" type="button" data-agent-prompt="Coin nào trong watchlist đang giảm?">Coin đang giảm</button>
+            <button class="prompt-chip" type="button" data-agent-prompt="BTC price">BTC price</button>
+            <button class="prompt-chip" type="button" data-agent-prompt="Top gainers">Top gainers</button>
+            <button class="prompt-chip" type="button" data-agent-prompt="Top losers">Top losers</button>
+            <button class="prompt-chip" type="button" data-agent-prompt="Compare BTC and ETH">Compare BTC and ETH</button>
+            <button class="prompt-chip" type="button" data-agent-prompt="24h range">24h range</button>
+            <button class="prompt-chip" type="button" data-agent-prompt="Which coins are falling?">Falling coins</button>
           </div>
 
           <div class="schedule-control">
@@ -110,7 +110,7 @@
           <form id="agent-form" class="agent-form">
             <label class="sr-only" for="agent-question">Ask the crypto agent</label>
             <input id="agent-question" maxlength="160" autocomplete="off"
-                   placeholder="Hỏi: Giá BTC hoặc so sánh BTC và ETH…">
+                   placeholder="Ask: BTC price or compare BTC and ETH…">
             <button class="button button-primary" type="submit">Ask</button>
           </form>
         </div>
