@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="A private-by-default DID crypto watchlist powered by Binance Spot market data.">
+  <meta name="description" content="A rule-based crypto agent with live Binance Spot data and a private browser DID.">
   <meta name="theme-color" content="#07110d">
-  <title>Signal ID — Crypto prices with a browser DID</title>
+  <title>Signal ID — Rule-based crypto agent with a browser DID</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
@@ -26,11 +26,11 @@
   <main class="shell">
     <section class="hero" aria-labelledby="page-title">
       <div>
-        <p class="eyebrow">Identity-native market watch</p>
-        <h1 id="page-title">Track the market.<br><span>Own the receipt.</span></h1>
+        <p class="eyebrow">Rule-based crypto agent</p>
+        <h1 id="page-title">Ask the market.<br><span>Own the receipt.</span></h1>
       </div>
-      <p class="hero-copy">Live Binance Spot prices with a DID generated in your browser.
-        No account, wallet extension, API key, or server-side private key.</p>
+      <p class="hero-copy">Ask about live Binance prices, rankings, comparisons, and 24-hour
+        movement. No LLM, wallet extension, API key, or server-side private key.</p>
     </section>
 
     <section class="identity-card panel" aria-labelledby="identity-title">
@@ -72,10 +72,55 @@
       </div>
     </section>
 
+    <section class="agent-section" aria-labelledby="agent-title">
+      <div class="market-heading">
+        <div>
+          <p class="section-kicker">02 / Agent</p>
+          <h2 id="agent-title">Technocore Crypto Agent</h2>
+        </div>
+        <span class="state-pill active">Rule engine · no AI key</span>
+      </div>
+
+      <div class="agent-layout panel">
+        <aside class="agent-controls">
+          <p class="agent-description">Ask in Vietnamese or English. The agent answers only from
+            the live Binance tickers in your watchlist — no LLM and no invented market data.</p>
+          <div class="prompt-list" aria-label="Suggested questions">
+            <button class="prompt-chip" type="button" data-agent-prompt="Giá BTC">Giá BTC</button>
+            <button class="prompt-chip" type="button" data-agent-prompt="Top tăng">Top tăng</button>
+            <button class="prompt-chip" type="button" data-agent-prompt="Top giảm">Top giảm</button>
+            <button class="prompt-chip" type="button" data-agent-prompt="So sánh BTC và ETH">So sánh BTC và ETH</button>
+            <button class="prompt-chip" type="button" data-agent-prompt="Biến động 24 giờ">Biến động 24 giờ</button>
+            <button class="prompt-chip" type="button" data-agent-prompt="Coin nào trong watchlist đang giảm?">Coin đang giảm</button>
+          </div>
+
+          <div class="schedule-control">
+            <label for="report-interval">Automatic market report</label>
+            <select id="report-interval">
+              <option value="0">Off</option>
+              <option value="5">Every 5 minutes</option>
+              <option value="10">Every 10 minutes</option>
+            </select>
+            <p id="report-status">Reports run only while this page remains open.</p>
+          </div>
+        </aside>
+
+        <div class="chat-panel">
+          <div id="agent-log" class="agent-log" role="log" aria-live="polite" aria-label="Crypto agent conversation"></div>
+          <form id="agent-form" class="agent-form">
+            <label class="sr-only" for="agent-question">Ask the crypto agent</label>
+            <input id="agent-question" maxlength="160" autocomplete="off"
+                   placeholder="Hỏi: Giá BTC hoặc so sánh BTC và ETH…">
+            <button class="button button-primary" type="submit">Ask</button>
+          </form>
+        </div>
+      </div>
+    </section>
+
     <section class="market-section" aria-labelledby="market-title">
       <div class="market-heading">
         <div>
-          <p class="section-kicker">02 / Market</p>
+          <p class="section-kicker">03 / Market</p>
           <h2 id="market-title">USDT watchlist</h2>
         </div>
         <form id="symbol-form" class="symbol-form">
@@ -111,7 +156,7 @@
     <section class="snapshot-card panel" aria-labelledby="snapshot-title">
       <div class="panel-heading">
         <div>
-          <p class="section-kicker">03 / Proof</p>
+          <p class="section-kicker">04 / Proof</p>
           <h2 id="snapshot-title">Sign a price snapshot</h2>
         </div>
         <span class="proof-mark" aria-hidden="true">✦</span>

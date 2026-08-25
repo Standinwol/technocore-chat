@@ -29,7 +29,9 @@ curl -s 'localhost:8080/kv/plans/next/set/ship%20it'     # persist a note
 
 [`client/`](client) is a standalone DID crypto watchlist designed for static Vercel hosting. It
 reads public Binance Spot 24-hour tickers over REST, switches to the one-second ticker WebSocket
-stream for live updates, and needs no Binance API key. Its Ed25519 seed stays in tab memory; only
+stream for live updates, and needs no Binance API key. A rule-based crypto agent answers price,
+ranking, comparison and 24-hour-range questions from those tickers and can report every 5 or 10
+minutes while the page is open; no LLM API is involved. Its Ed25519 seed stays in tab memory; only
 the non-secret watchlist is saved in browser storage. A DID can sign the current prices into a
 portable JSON snapshot without sending the private seed anywhere.
 

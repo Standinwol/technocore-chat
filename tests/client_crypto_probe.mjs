@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { webcrypto } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 
 import {
+  answerCryptoQuery,
+  buildPeriodicReport,
   canonicalSnapshot,
   createIdentity,
   formatPrice,
@@ -37,6 +40,38 @@ assert.deepEqual(streamTicker, {
   symbol: 'ETHUSDT', price: 10, change: -1.25, high: 11, low: 9,
   volume: 999, timestamp: 1700000001000,
 });
+
+const agentTickers = [
+  { symbol: 'BTCUSDT', price: 100, change: 2.5, high: 105, low: 95, timestamp: 1700000000000 },
+  { symbol: 'ETHUSDT', price: 10, change: -1.25, high: 11, low: 9, timestamp: 1700000001000 },
+  { symbol: 'SOLUSDT', price: 5, change: 4, high: 5.5, low: 4.5, timestamp: 1700000002000 },
+];
+assert.equal(answerCryptoQuery('Giá BTC', agentTickers).intent, 'price');
+assert.match(answerCryptoQuery('Giá BTC', agentTickers).text, /BTC: \$100\.0000 · \+2\.50%/);
+assert.match(answerCryptoQuery('price BTCUSDT', agentTickers).text, /BTC: \$100\.0000/);
+assert.equal(answerCryptoQuery('So sánh BTC và ETH', agentTickers).intent, 'compare');
+assert.match(answerCryptoQuery('So sánh BTC và ETH', agentTickers).text, /BTC đang có hiệu suất/);
+assert.equal(answerCryptoQuery('Coin nào trong watchlist đang giảm?', agentTickers).intent, 'losers');
+assert.match(answerCryptoQuery('Coin nào trong watchlist đang giảm?', agentTickers).text, /ETH/);
+assert.doesNotMatch(answerCryptoQuery('Coin nào trong watchlist đang giảm?', agentTickers).text, /SOL:/);
+assert.equal(answerCryptoQuery('which coin is falling?', agentTickers).intent, 'losers');
+assert.equal(answerCryptoQuery('Top tăng', agentTickers).intent, 'gainers');
+assert.match(answerCryptoQuery('Top tăng', agentTickers).text, /SOL:[\s\S]*BTC:/);
+assert.doesNotMatch(answerCryptoQuery('Top tăng', agentTickers).text, /ETH:/);
+assert.equal(answerCryptoQuery('Biến động 24 giờ của ETH', agentTickers).intent, 'range');
+assert.match(answerCryptoQuery('Biến động 24 giờ của ETH', agentTickers).text, /biên độ 22\.22%/);
+const report = buildPeriodicReport(agentTickers, 1700000005000);
+assert.match(report, /Báo cáo tự động/);
+assert.match(report, /Mạnh nhất: SOL/);
+assert.match(report, /Yếu nhất: ETH/);
+assert.match(report, /2 tăng\/đứng · 1 giảm/);
+
+const html = readFileSync(new URL('../client/index.html', import.meta.url), 'utf8');
+const ids = [...html.matchAll(/\sid="([^"]+)"/g)].map((match) => match[1]);
+assert.equal(new Set(ids).size, ids.length, 'HTML ids must be unique');
+for (const id of ['agent-log', 'agent-form', 'agent-question', 'report-interval', 'ticker-list']) {
+  assert.ok(ids.includes(id), `missing #${id}`);
+}
 
 const seed = '000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f';
 const identity = await createIdentity(seed, webcrypto);

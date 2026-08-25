@@ -133,6 +133,142 @@ export async function signSnapshot(identity, tickers, createdAt = Date.now(), cr
   return JSON.stringify({ payload: JSON.parse(payload), signature: hex(new Uint8Array(signature)) }, null, 2);
 }
 
+const ASSET_ALIASES = {
+  BTC: ['btc', 'bitcoin'],
+  ETH: ['eth', 'ethereum', 'ether'],
+  BNB: ['bnb', 'binance coin'],
+  SOL: ['sol', 'solana'],
+  XRP: ['xrp', 'ripple'],
+  DOGE: ['doge', 'dogecoin'],
+  ADA: ['ada', 'cardano'],
+};
+
+function foldText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .toLowerCase();
+}
+
+function availableTickers(values) {
+  return [...values].filter((ticker) => ticker
+    && ticker.symbol?.endsWith('USDT')
+    && Number.isFinite(ticker.price)
+    && Number.isFinite(ticker.change));
+}
+
+function mentionedTickers(question, tickers) {
+  const folded = foldText(question);
+  return tickers.filter((ticker) => {
+    const asset = ticker.symbol.slice(0, -4);
+    const aliases = [...(ASSET_ALIASES[asset] || [asset.toLowerCase()]), ticker.symbol.toLowerCase()];
+    return aliases.some((alias) => {
+      const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`).test(folded);
+    });
+  });
+}
+
+function percent(value) {
+  return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
+}
+
+function tickerLine(ticker) {
+  return `${ticker.symbol.slice(0, -4)}: ${formatPrice(ticker.price)} · ${percent(ticker.change)} (24h)`;
+}
+
+export function answerCryptoQuery(question, values) {
+  const tickers = availableTickers(values);
+  if (!tickers.length) {
+    return { intent: 'waiting', text: 'Mình đang chờ dữ liệu Binance. Hãy thử lại sau vài giây.' };
+  }
+  const folded = foldText(question).trim();
+  const selected = mentionedTickers(question, tickers);
+  const help = [
+    'Mình trả lời trực tiếp từ watchlist Binance đang live. Bạn có thể hỏi:',
+    '• Giá BTC',
+    '• Top tăng hoặc Top giảm',
+    '• So sánh BTC và ETH',
+    '• Biến động 24 giờ',
+    '• Coin nào trong watchlist đang giảm?',
+  ].join('\n');
+
+  if (!folded || /^(help|tro giup|xin chao|chao|hello|hi)$/.test(folded)) {
+    return { intent: 'help', text: help };
+  }
+
+  if (/(so sanh|compare|\bvs\b)/.test(folded)) {
+    if (selected.length < 2) {
+      return { intent: 'compare', text: 'Hãy nêu ít nhất hai coin trong watchlist, ví dụ: “So sánh BTC và ETH”.' };
+    }
+    const ranked = [...selected].sort((left, right) => right.change - left.change);
+    const lead = ranked[0];
+    return {
+      intent: 'compare',
+      text: `${selected.map(tickerLine).join('\n')}\n${lead.symbol.slice(0, -4)} đang có hiệu suất 24h tốt nhất trong nhóm này.`,
+    };
+  }
+
+  if (/(coin nao|which|top|dang giam|giam manh|loser|worst|falling|\bdown\b)/.test(folded)
+      && /(giam|loser|worst|falling|\bdown\b)/.test(folded)) {
+    const falling = tickers.filter((ticker) => ticker.change < 0).sort((left, right) => left.change - right.change);
+    return {
+      intent: 'losers',
+      text: falling.length
+        ? `Các coin đang giảm trong watchlist:\n${falling.map(tickerLine).join('\n')}`
+        : 'Hiện không có coin nào trong watchlist giảm trong cửa sổ 24h.',
+    };
+  }
+
+  if (/(top|tang manh|gainer|best|rising|\bup\b)/.test(folded)
+      && /(tang|gainer|best|rising|\bup\b)/.test(folded)) {
+    const rising = tickers.filter((ticker) => ticker.change >= 0)
+      .sort((left, right) => right.change - left.change)
+      .slice(0, 3);
+    return {
+      intent: 'gainers',
+      text: rising.length
+        ? `Top tăng 24h trong watchlist:\n${rising.map(tickerLine).join('\n')}`
+        : 'Hiện không có coin nào trong watchlist tăng trong cửa sổ 24h.',
+    };
+  }
+
+  if (/(bien dong|24 ?h|range|cao nhat|thap nhat)/.test(folded)) {
+    const targets = selected.length ? selected : tickers;
+    const lines = targets.map((ticker) => {
+      const spread = ticker.low > 0 ? ((ticker.high - ticker.low) / ticker.low) * 100 : 0;
+      return `${ticker.symbol.slice(0, -4)}: thấp ${formatPrice(ticker.low)} · cao ${formatPrice(ticker.high)} · biên độ ${spread.toFixed(2)}%`;
+    });
+    return { intent: 'range', text: `Biến động 24 giờ:\n${lines.join('\n')}` };
+  }
+
+  if (/(gia|price|bao nhieu)/.test(folded) || selected.length) {
+    const targets = selected.length ? selected : tickers;
+    return { intent: 'price', text: targets.map(tickerLine).join('\n') };
+  }
+
+  return { intent: 'help', text: help };
+}
+
+export function buildPeriodicReport(values, now = Date.now()) {
+  const tickers = availableTickers(values);
+  if (!tickers.length) return 'Chưa có dữ liệu Binance để lập báo cáo.';
+  const ranked = [...tickers].sort((left, right) => right.change - left.change);
+  const rising = tickers.filter((ticker) => ticker.change >= 0).length;
+  const falling = tickers.length - rising;
+  const time = new Date(now).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+  return [
+    `Báo cáo tự động lúc ${time}`,
+    `Mạnh nhất: ${tickerLine(ranked[0])}`,
+    `Yếu nhất: ${tickerLine(ranked[ranked.length - 1])}`,
+    `Watchlist: ${rising} tăng/đứng · ${falling} giảm`,
+    '',
+    ...tickers.map(tickerLine),
+  ].join('\n');
+}
+
 function startApp() {
   const elements = {
     seed: document.getElementById('seed'),
@@ -145,6 +281,10 @@ function startApp() {
     tickerList: document.getElementById('ticker-list'),
     symbol: document.getElementById('symbol'),
     snapshot: document.getElementById('snapshot-output'),
+    agentLog: document.getElementById('agent-log'),
+    agentQuestion: document.getElementById('agent-question'),
+    reportInterval: document.getElementById('report-interval'),
+    reportStatus: document.getElementById('report-status'),
   };
   const buttons = {
     copyDid: document.getElementById('copy-did'),
@@ -159,6 +299,9 @@ function startApp() {
   let streamGeneration = 0;
   let reconnectTimer = null;
   let signedSnapshot = '';
+  let reportTimer = null;
+  let nextReportAt = 0;
+  let reportCountdown = null;
 
   function loadWatchlist() {
     try {
@@ -366,6 +509,65 @@ function startApp() {
     }
   }
 
+  function currentTickers() {
+    return symbols.map((symbol) => tickers.get(symbol)).filter(Boolean);
+  }
+
+  function addAgentMessage(role, text) {
+    const message = document.createElement('div');
+    message.className = `agent-message ${role}`;
+    const meta = document.createElement('p');
+    meta.className = 'agent-message-meta';
+    meta.textContent = role === 'user' ? 'You' : 'Technocore Agent';
+    const bubble = document.createElement('p');
+    bubble.className = 'agent-bubble';
+    bubble.textContent = text;
+    message.append(meta, bubble);
+    elements.agentLog.appendChild(message);
+    while (elements.agentLog.children.length > 80) elements.agentLog.firstElementChild.remove();
+    elements.agentLog.scrollTop = elements.agentLog.scrollHeight;
+  }
+
+  function askAgent(question) {
+    const value = question.trim();
+    if (!value) return;
+    addAgentMessage('user', value);
+    const answer = answerCryptoQuery(value, currentTickers());
+    addAgentMessage('agent', answer.text);
+  }
+
+  function updateReportStatus() {
+    if (!nextReportAt) {
+      elements.reportStatus.textContent = 'Reports run only while this page remains open.';
+      return;
+    }
+    const seconds = Math.max(0, Math.ceil((nextReportAt - Date.now()) / 1000));
+    const minutes = Math.floor(seconds / 60);
+    const remainder = seconds % 60;
+    elements.reportStatus.textContent = `Next report in ${minutes}:${String(remainder).padStart(2, '0')} · page must stay open.`;
+  }
+
+  function configureReports() {
+    clearInterval(reportTimer);
+    clearInterval(reportCountdown);
+    nextReportAt = 0;
+    const minutes = Number(elements.reportInterval.value);
+    if (!minutes) {
+      updateReportStatus();
+      return;
+    }
+    const delay = minutes * 60 * 1000;
+    nextReportAt = Date.now() + delay;
+    updateReportStatus();
+    reportCountdown = setInterval(updateReportStatus, 1000);
+    reportTimer = setInterval(() => {
+      addAgentMessage('agent', buildPeriodicReport(currentTickers()));
+      nextReportAt = Date.now() + delay;
+      updateReportStatus();
+    }, delay);
+    addAgentMessage('agent', `Đã bật báo cáo tự động mỗi ${minutes} phút. Báo cáo chỉ chạy khi trang này đang mở.`);
+  }
+
   document.getElementById('generate-did').addEventListener('click', () => {
     const seed = new Uint8Array(32);
     crypto.getRandomValues(seed);
@@ -400,6 +602,15 @@ function startApp() {
     }
   });
   document.getElementById('refresh').addEventListener('click', refreshMarket);
+  document.getElementById('agent-form').addEventListener('submit', (event) => {
+    event.preventDefault();
+    askAgent(elements.agentQuestion.value);
+    elements.agentQuestion.value = '';
+  });
+  document.querySelectorAll('[data-agent-prompt]').forEach((button) => {
+    button.addEventListener('click', () => askAgent(button.dataset.agentPrompt));
+  });
+  elements.reportInterval.addEventListener('change', configureReports);
   buttons.sign.addEventListener('click', async () => {
     if (!identity) return;
     const values = symbols.map((symbol) => tickers.get(symbol)).filter(Boolean);
@@ -414,6 +625,7 @@ function startApp() {
   buttons.copySnapshot.addEventListener('click', () => signedSnapshot && copyText(signedSnapshot, 'Signed snapshot JSON copied.'));
 
   renderMarket();
+  addAgentMessage('agent', 'Xin chào. Mình là agent rule-based: không dùng OpenAI và chỉ trả lời từ dữ liệu Binance trong watchlist. Hãy thử “Giá BTC” hoặc “Top giảm”.');
   refreshMarket();
   connectStream();
 }
