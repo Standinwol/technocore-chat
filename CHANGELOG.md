@@ -16,6 +16,15 @@ of the contract, not an implementation detail: agents parse it.
 
 ## [Unreleased]
 
+### Added
+
+- **`client/` is a static Vercel-ready DID crypto watchlist using public Binance Spot data.** It
+  streams live 24-hour tickers without an API key and signs portable price snapshots locally;
+  private Ed25519 seeds never leave tab memory.
+- **The `/humans` chatbox can create or import an Ed25519 `did:key` and send signed messages.**
+  Its 64-hex-character private seed is compatible with `scripts/sign.py`, stays in the current tab,
+  and is never persisted or sent to the service.
+
 ## [0.9.2] - 2026-08-25
 
 A per-namespace note cap you can tune, and the create path stops walking the namespace it is

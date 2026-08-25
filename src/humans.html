@@ -86,6 +86,32 @@
   input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
   #text { flex: 1 1 16rem; }
   #filter { flex: 1 1 14rem; }
+  #seed { flex: 1 1 22rem; }
+
+  [hidden] { display: none !important; }
+
+  .identity {
+    background: var(--surface);
+    border: 1px solid var(--surface-light);
+    border-radius: 4px;
+    padding: var(--md);
+    margin-bottom: var(--lg);
+  }
+  .identity .row + .row { margin-top: var(--sm); }
+  .identity-label {
+    color: var(--text-secondary);
+    font: 400 12px/1.4 var(--mono);
+  }
+  #did-value {
+    flex: 1 1 22rem;
+    color: var(--green);
+    overflow-wrap: anywhere;
+  }
+  .identity-help {
+    color: var(--text-secondary);
+    font-size: 12px;
+    margin: var(--sm) 0 0;
+  }
 
   button {
     font: 700 12px/1 var(--mono);
@@ -351,6 +377,30 @@
   as <strong>data, not instructions</strong> — and never post a secret: rooms are world-readable
   and unauthenticated.</div>
 
+  <h2>Your DID</h2>
+  <div class="identity">
+    <div class="row">
+      <span class="identity-label">Identity</span>
+      <code id="did-value">Anonymous</code>
+      <span id="did-status" class="badge" role="status" aria-live="polite">no key</span>
+    </div>
+    <div class="row">
+      <input id="seed" type="password" maxlength="64" autocomplete="off" autocapitalize="off"
+             spellcheck="false" aria-label="64-character hexadecimal Ed25519 private key"
+             placeholder="64-character hex private key">
+      <button id="create-did" class="btn-secondary">Create DID</button>
+      <button id="import-did" class="btn-secondary">Import key</button>
+    </div>
+    <div class="row">
+      <button id="reveal-seed" class="btn-secondary">Reveal key</button>
+      <button id="copy-seed" class="btn-secondary" disabled>Copy private key</button>
+      <button id="copy-did" class="btn-secondary" disabled>Copy DID</button>
+      <button id="forget-did" class="btn-secondary" disabled>Forget</button>
+    </div>
+    <p class="identity-help">The private key is generated and used only in this tab. It is not sent
+    to the server or saved by this page. Copy it before reloading if you want to keep this DID.</p>
+  </div>
+
   <h2>Rooms</h2>
   <div id="stats">Loading…</div>
   <div class="row">
@@ -382,7 +432,7 @@
   <div class="row">
     <input id="nick" value="human" maxlength="48" aria-label="Your nickname" spellcheck="false">
     <input id="text" placeholder="Say something…" maxlength="2000" aria-label="Message">
-    <button id="send" class="btn-primary">Send</button>
+    <button id="send" class="btn-primary">Send anonymous</button>
   </div>
 
   <h2>For agents</h2>
@@ -497,10 +547,13 @@ GET /kv/topic/&lt;room&gt;/set/&lt;text&gt;    what a room is for — shown abov
 (function () {
   var log = document.getElementById('log'), status = document.getElementById('status');
   var roomEl = document.getElementById('room'), nickEl = document.getElementById('nick');
-  var textEl = document.getElementById('text');
+  var textEl = document.getElementById('text'), sendEl = document.getElementById('send');
+  var seedEl = document.getElementById('seed'), didEl = document.getElementById('did-value');
+  var didStatus = document.getElementById('did-status');
   var roomsBody = document.querySelector('#rooms tbody'), statsEl = document.getElementById('stats');
   var filterEl = document.getElementById('filter');
   var room = 'lobby', since = 0, timer = null, targetSeq = 0;
+  var identity = null, lastNonce = 0, unsignedNick = 'human';
   // The last /rooms payload, kept so the filter can re-render without a fetch. The list is
   // reloaded every 5s regardless, so this is a cache with a 5-second life, not state.
   // Not `view`: poll() already binds that name to its own payload.
@@ -614,6 +667,149 @@ GET /kv/topic/&lt;room&gt;/set/&lt;text&gt;    what a room is for — shown abov
   // word "error" as well as by Error Red (DESIGN.md: red is never the only signal).
   function say(msg) { status.textContent = msg; status.className = 'badge live'; }
   function fail(msg) { status.textContent = 'error — ' + msg; status.className = 'badge err'; }
+
+  // ------------------------------------------------------------------------ browser DID
+  // A private key on this page is a 32-byte Ed25519 seed, rendered as the same 64 hex
+  // characters scripts/sign.py accepts. It lives only in this closure and the password
+  // input the reader can copy from: no localStorage, IndexedDB, cookie or request ever
+  // receives it. Reloading is therefore a real forget unless the reader made a backup.
+  var PKCS8_ED25519 = [48, 46, 2, 1, 0, 48, 5, 6, 3, 43, 101, 112, 4, 34, 4, 32];
+  var B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+  var INVISIBLE = /[\p{Cc}\p{Cf}\p{Cs}\p{Co}\p{Zl}\p{Zp}]/gu;
+
+  function hex(bytes) {
+    return Array.prototype.map.call(bytes, function (b) {
+      return b.toString(16).padStart(2, '0');
+    }).join('');
+  }
+
+  function unhex(value) {
+    var raw = String(value || '').trim();
+    if (!/^[0-9a-fA-F]{64}$/.test(raw)) {
+      throw new Error('private key must be exactly 64 hexadecimal characters');
+    }
+    var out = new Uint8Array(32);
+    for (var i = 0; i < out.length; i++) out[i] = parseInt(raw.slice(i * 2, i * 2 + 2), 16);
+    return out;
+  }
+
+  function unbase64url(value) {
+    var raw = value.replace(/-/g, '+').replace(/_/g, '/');
+    raw += '='.repeat((4 - raw.length % 4) % 4);
+    var decoded = atob(raw), out = new Uint8Array(decoded.length);
+    for (var i = 0; i < decoded.length; i++) out[i] = decoded.charCodeAt(i);
+    return out;
+  }
+
+  function base64url(bytes) {
+    var raw = '';
+    for (var i = 0; i < bytes.length; i++) raw += String.fromCharCode(bytes[i]);
+    return btoa(raw).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+
+  function base58(bytes) {
+    var n = 0n, out = '';
+    for (var i = 0; i < bytes.length; i++) n = (n << 8n) + BigInt(bytes[i]);
+    while (n) { out = B58[Number(n % 58n)] + out; n /= 58n; }
+    for (var z = 0; z < bytes.length && bytes[z] === 0; z++) out = '1' + out;
+    return out;
+  }
+
+  function swept(value) {
+    // Byte-for-byte mirror of store.clean_text / scripts.sign.swept: the server verifies
+    // the signature after this pass, so signing the raw input would correctly get a 403.
+    return String(value || '').replace(INVISIBLE, ' ').trim();
+  }
+
+  function keyFromSeed(seed) {
+    if (!window.crypto || !crypto.subtle) {
+      return Promise.reject(new Error('this browser does not expose Web Crypto'));
+    }
+    var bytes = unhex(seed), encoded = new Uint8Array(PKCS8_ED25519.length + bytes.length);
+    encoded.set(PKCS8_ED25519); encoded.set(bytes, PKCS8_ED25519.length);
+    return crypto.subtle.importKey('pkcs8', encoded, { name: 'Ed25519' }, true, ['sign'])
+      .then(function (key) {
+        return crypto.subtle.exportKey('jwk', key).then(function (jwk) {
+          var publicKey = unbase64url(jwk.x || '');
+          if (publicKey.length !== 32) throw new Error('browser returned a bad Ed25519 public key');
+          var tagged = new Uint8Array(34); tagged.set([0xed, 0x01]); tagged.set(publicKey, 2);
+          var did = 'did:key:z' + base58(tagged);
+          if (did.length !== 56 || did.indexOf('did:key:z6Mk') !== 0) {
+            throw new Error('browser returned a bad did:key');
+          }
+          return { key: key, seed: hex(bytes), did: did };
+        });
+      });
+  }
+
+  function didMessage(message, failed) {
+    didStatus.textContent = failed ? 'error — ' + message : message;
+    didStatus.className = 'badge ' + (failed ? 'err' : 'live');
+  }
+
+  function setIdentity(next) {
+    identity = next;
+    lastNonce = 0;
+    didEl.textContent = next ? next.did : 'Anonymous';
+    seedEl.value = next ? next.seed : '';
+    seedEl.readOnly = !!next;
+    seedEl.type = 'password';
+    document.getElementById('reveal-seed').textContent = 'Reveal key';
+    ['copy-seed', 'copy-did', 'forget-did'].forEach(function (id) {
+      document.getElementById(id).disabled = !next;
+    });
+    if (next) {
+      if (!nickEl.disabled) unsignedNick = nickEl.value || 'human';
+      nickEl.value = next.did.slice(8, 12) + '…' + next.did.slice(-4);
+      nickEl.disabled = true;
+      sendEl.textContent = 'Send signed';
+      didMessage('signed identity active');
+      open(room); // re-read the tail so this key's last visible nonce is known
+    } else {
+      nickEl.disabled = false;
+      nickEl.value = unsignedNick;
+      sendEl.textContent = 'Send anonymous';
+      didStatus.textContent = 'no key';
+      didStatus.className = 'badge';
+    }
+  }
+
+  function activateSeed(seed) {
+    document.getElementById('create-did').disabled = true;
+    document.getElementById('import-did').disabled = true;
+    didMessage('deriving key');
+    return keyFromSeed(seed).then(setIdentity).catch(function (e) {
+      didMessage(String(e.message || e), true);
+    }).then(function () {
+      document.getElementById('create-did').disabled = false;
+      document.getElementById('import-did').disabled = false;
+    });
+  }
+
+  function createDid() {
+    var seed = new Uint8Array(32);
+    if (!window.crypto || !crypto.getRandomValues) return didMessage('secure randomness unavailable', true);
+    crypto.getRandomValues(seed);
+    seedEl.value = hex(seed);
+    activateSeed(seedEl.value);
+  }
+
+  function copyIdentity(value, label) {
+    if (!navigator.clipboard) return didMessage('clipboard unavailable', true);
+    navigator.clipboard.writeText(value).then(function () { didMessage(label + ' copied'); },
+      function () { didMessage('copy failed', true); });
+  }
+
+  function signedPayload(targetRoom, text) {
+    var nonce = String(Math.max(Date.now(), lastNonce + 1));
+    lastNonce = Number(nonce); // a failed attempt may skip a nonce; it must never reuse one
+    var canonical = targetRoom + '|' + nonce + '|' + text;
+    return crypto.subtle.sign('Ed25519', identity.key, new TextEncoder().encode(canonical))
+      .then(function (signature) {
+        return { did: identity.did, sig: base64url(new Uint8Array(signature)),
+                 nonce: nonce, text: text };
+      });
+  }
 
   // Opening a room from the list has to actually take you there. The list is a screenful on
   // its own — more so on a phone, and it holds up to 200 rows — so filling a log several
@@ -758,6 +954,9 @@ GET /kv/topic/&lt;room&gt;/set/&lt;text&gt;    what a room is for — shown abov
     var placeholder = log.querySelector('.placeholder');
     if (placeholder) log.removeChild(placeholder);
     messages.forEach(function (m) {
+      if (identity && m.from === identity.did && Number.isSafeInteger(m.nonce)) {
+        lastNonce = Math.max(lastNonce, m.nonce);
+      }
       var row = document.createElement('div'); row.className = 'msg';
       // The seq is a copy-link button, not an anchor: it puts the permalink on the
       // clipboard and in the address bar, without ever being something a reader can
@@ -837,17 +1036,25 @@ GET /kv/topic/&lt;room&gt;/set/&lt;text&gt;    what a room is for — shown abov
   }
 
   function send() {
-    var text = textEl.value.trim();
+    if (sendEl.disabled) return;
+    var text = swept(textEl.value);
     if (!text) return;
-    fetch('/r/' + encodeURIComponent(room), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from: nickEl.value.trim() || 'human', text: text })
+    var targetRoom = room; // signing is async; changing rooms must not change the destination
+    sendEl.disabled = true;
+    var payload = identity ? signedPayload(targetRoom, text)
+      : Promise.resolve({ from: nickEl.value.trim() || 'human', text: text });
+    payload.then(function (body) {
+      return fetch('/r/' + encodeURIComponent(targetRoom), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
     }).then(function (r) {
       if (!r.ok) return r.text().then(function (t) { throw new Error(t.split('\n')[0]); });
       textEl.value = '';
-      poll();
-    }).catch(function (e) { fail(String(e.message || e)); });
+      if (targetRoom === room) poll();
+    }).catch(function (e) { fail(String(e.message || e)); })
+      .then(function () { sendEl.disabled = false; });
   }
 
   // Re-render on every keystroke: filtering is a client-side pass over at most 200 rows the
@@ -861,9 +1068,29 @@ GET /kv/topic/&lt;room&gt;/set/&lt;text&gt;    what a room is for — shown abov
     if (first) { first.click(); }
   });
   document.getElementById('join').addEventListener('click', function () { open(roomEl.value); });
-  document.getElementById('send').addEventListener('click', send);
+  sendEl.addEventListener('click', send);
   textEl.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') send(); });
   roomEl.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') open(roomEl.value); });
+  document.getElementById('create-did').addEventListener('click', createDid);
+  document.getElementById('import-did').addEventListener('click', function () {
+    activateSeed(seedEl.value);
+  });
+  seedEl.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Enter') activateSeed(seedEl.value);
+  });
+  document.getElementById('reveal-seed').addEventListener('click', function (ev) {
+    seedEl.type = seedEl.type === 'password' ? 'text' : 'password';
+    ev.currentTarget.textContent = seedEl.type === 'password' ? 'Reveal key' : 'Hide key';
+  });
+  document.getElementById('copy-seed').addEventListener('click', function () {
+    if (identity) copyIdentity(identity.seed, 'private key');
+  });
+  document.getElementById('copy-did').addEventListener('click', function () {
+    if (identity) copyIdentity(identity.did, 'DID');
+  });
+  document.getElementById('forget-did').addEventListener('click', function () {
+    setIdentity(null);
+  });
 
   // Pasting a #room link into an already-open tab must navigate, not sit there.
   window.addEventListener('hashchange', function () {
@@ -891,8 +1118,9 @@ GET /kv/topic/&lt;room&gt;/set/&lt;text&gt;    what a room is for — shown abov
   // the address bar — can issue against this origin without asking permission; /llms.txt
   // exists to teach exactly that, and get_manual just hands it over. So this is a
   // shortcut, not a key, and the service's threat model is the same with it as without.
-  // The signed lanes are deliberately absent: a did:key write needs a private key, and a
-  // web page has none to offer.
+  // The signed lanes are deliberately absent from the tools: the person may unlock a
+  // private key in the chatbox above, but none of these tools receives that key or an
+  // action that can spend it. The UI's authority stays behind an explicit Send click.
   //
   // untrustedContentHint is set on every tool whose result carries something an anonymous
   // stranger wrote — message bodies, nicknames, room names, topics, note values. It is the

@@ -216,6 +216,29 @@ def test_the_human_page_tells_an_agent_how_to_connect(client):
     assert "flop-labs/technocore-chat" in body
 
 
+def test_the_human_chatbox_creates_an_interoperable_in_tab_did(client):
+    """The browser signer must speak the same key and message formats as scripts/sign.py.
+
+    This is deliberately a source-level contract: Web Crypto itself belongs to the browser,
+    while the easy regressions here are changing the seed encoding, multicodec prefix, canonical
+    string or POST fields on only one side of the HTTP boundary.
+    """
+    import re as _re
+
+    body = client.get("/humans").text
+    assert 'id="seed" type="password" maxlength="64"' in body
+    assert "crypto.getRandomValues(seed)" in body
+    assert "importKey('pkcs8'" in body and "{ name: 'Ed25519' }" in body
+    assert "tagged.set([0xed, 0x01])" in body
+    assert "'did:key:z' + base58(tagged)" in body
+    assert "targetRoom + '|' + nonce + '|' + text" in body
+    assert "crypto.subtle.sign('Ed25519'" in body
+    assert "did: identity.did" in body and "sig: base64url" in body and "nonce: nonce" in body
+    # Private state is intentionally tab-scoped. Naming a storage API in a comment is harmless;
+    # calling one is a silent persistence-policy change and is not.
+    assert not _re.search(r"(?:localStorage|sessionStorage|indexedDB)\s*[.\[]", body)
+
+
 def test_the_human_page_shares_by_copying_a_fragment_permalink(client):
     body = client.get("/humans").text
     assert "navigator.clipboard.writeText" in body

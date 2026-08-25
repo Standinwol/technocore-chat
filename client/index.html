@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="A private-by-default DID crypto watchlist powered by Binance Spot market data.">
+  <meta name="theme-color" content="#07110d">
+  <title>Signal ID — Crypto prices with a browser DID</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="ambient ambient-one" aria-hidden="true"></div>
+  <div class="ambient ambient-two" aria-hidden="true"></div>
+
+  <header class="site-header shell">
+    <a class="brand" href="/" aria-label="Signal ID home">
+      <span class="brand-mark" aria-hidden="true">S/</span>
+      <span>Signal ID</span>
+    </a>
+    <div class="market-state" role="status">
+      <span id="live-dot" class="live-dot"></span>
+      <span id="market-status">Connecting to Binance</span>
+    </div>
+  </header>
+
+  <main class="shell">
+    <section class="hero" aria-labelledby="page-title">
+      <div>
+        <p class="eyebrow">Identity-native market watch</p>
+        <h1 id="page-title">Track the market.<br><span>Own the receipt.</span></h1>
+      </div>
+      <p class="hero-copy">Live Binance Spot prices with a DID generated in your browser.
+        No account, wallet extension, API key, or server-side private key.</p>
+    </section>
+
+    <section class="identity-card panel" aria-labelledby="identity-title">
+      <div class="panel-heading">
+        <div>
+          <p class="section-kicker">01 / Identity</p>
+          <h2 id="identity-title">Browser DID</h2>
+        </div>
+        <span id="identity-state" class="state-pill">Not connected</span>
+      </div>
+
+      <div class="identity-grid">
+        <div class="field-group seed-group">
+          <label for="seed">Ed25519 private seed</label>
+          <div class="field-row">
+            <input id="seed" type="password" inputmode="text" maxlength="64"
+                   autocomplete="off" autocapitalize="off" spellcheck="false"
+                   placeholder="64 hexadecimal characters">
+            <button id="toggle-seed" class="icon-button" type="button" aria-label="Show private seed">Show</button>
+          </div>
+          <p class="field-help">The seed exists only in this tab. It is never stored or sent to Binance.</p>
+        </div>
+
+        <div class="field-group did-group">
+          <label for="did">Decentralized identifier</label>
+          <div class="field-row">
+            <input id="did" type="text" readonly value="Generate or import a seed to begin">
+            <button id="copy-did" class="icon-button" type="button" disabled>Copy</button>
+          </div>
+          <p id="identity-message" class="field-help" aria-live="polite">Ed25519 keys use the did:key method.</p>
+        </div>
+      </div>
+
+      <div class="button-row">
+        <button id="generate-did" class="button button-primary" type="button">Generate DID</button>
+        <button id="import-seed" class="button button-secondary" type="button">Use this seed</button>
+        <button id="copy-seed" class="button button-quiet" type="button" disabled>Copy seed</button>
+        <button id="forget-did" class="button button-danger" type="button" disabled>Forget</button>
+      </div>
+    </section>
+
+    <section class="market-section" aria-labelledby="market-title">
+      <div class="market-heading">
+        <div>
+          <p class="section-kicker">02 / Market</p>
+          <h2 id="market-title">USDT watchlist</h2>
+        </div>
+        <form id="symbol-form" class="symbol-form">
+          <label class="sr-only" for="symbol">Add a USDT market</label>
+          <input id="symbol" maxlength="12" autocomplete="off" autocapitalize="characters"
+                 spellcheck="false" placeholder="Add BTC or BTCUSDT">
+          <button class="button button-primary" type="submit">Add market</button>
+        </form>
+      </div>
+
+      <p id="market-message" class="market-message" aria-live="polite"></p>
+      <div class="table-wrap panel">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Asset</th>
+              <th scope="col">Price</th>
+              <th scope="col">24h</th>
+              <th scope="col" class="optional-column">24h range</th>
+              <th scope="col" class="optional-column">Volume</th>
+              <th scope="col"><span class="sr-only">Remove</span></th>
+            </tr>
+          </thead>
+          <tbody id="ticker-list"></tbody>
+        </table>
+      </div>
+      <div class="market-foot">
+        <span>Prices update every second through Binance Spot WebSocket streams.</span>
+        <button id="refresh" class="text-button" type="button">Refresh snapshot</button>
+      </div>
+    </section>
+
+    <section class="snapshot-card panel" aria-labelledby="snapshot-title">
+      <div class="panel-heading">
+        <div>
+          <p class="section-kicker">03 / Proof</p>
+          <h2 id="snapshot-title">Sign a price snapshot</h2>
+        </div>
+        <span class="proof-mark" aria-hidden="true">✦</span>
+      </div>
+      <p class="snapshot-copy">Create a portable JSON receipt containing the current prices, your DID,
+        timestamp, and an Ed25519 signature. Signing happens locally.</p>
+      <div class="button-row">
+        <button id="sign-snapshot" class="button button-primary" type="button" disabled>Sign snapshot</button>
+        <button id="copy-snapshot" class="button button-secondary" type="button" disabled>Copy JSON</button>
+      </div>
+      <pre id="snapshot-output" class="snapshot-output" tabindex="0">A signed snapshot will appear here.</pre>
+    </section>
+  </main>
+
+  <footer class="site-footer shell">
+    <span>Market data: Binance Spot API</span>
+    <span>Information only — not financial advice.</span>
+  </footer>
+
+  <script type="module" src="/app.mjs"></script>
+</body>
+</html>
