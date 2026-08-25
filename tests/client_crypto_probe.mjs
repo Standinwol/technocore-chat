@@ -77,8 +77,11 @@ const appSource = readFileSync(new URL('../client/app.mjs', import.meta.url), 'u
 const ids = [...html.matchAll(/\sid="([^"]+)"/g)].map((match) => match[1]);
 assert.equal(new Set(ids).size, ids.length, 'HTML ids must be unique');
 for (const id of ['agent-log', 'agent-form', 'agent-question', 'report-interval', 'ticker-list',
-  'technocore-message', 'sign-technocore', 'signed-url', 'download-seed']) {
+  'room-log', 'room-composer', 'room-message', 'send-room-message', 'download-seed']) {
   assert.ok(ids.includes(id), `missing #${id}`);
+}
+for (const removedId of ['technocore-message', 'sign-technocore', 'post-technocore', 'signed-url']) {
+  assert.ok(!ids.includes(removedId), `obsolete #${removedId} should not remain`);
 }
 for (const match of appSource.matchAll(/getElementById\('([^']+)'\)/g)) {
   assert.ok(ids.includes(match[1]), `app references missing #${match[1]}`);

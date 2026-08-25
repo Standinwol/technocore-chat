@@ -33,8 +33,9 @@ stream for live updates. Its crypto agent answers price, ranking, comparison and
 questions from those tickers and can report every 5 or 10 minutes while the page is open. The
 active 64-hex Ed25519 seed stays in tab-scoped session storage, and users can download it for later
 import. The client lists rooms, long-polls history, reads sequence cursors, and sends signed POSTs
-through a fixed same-origin Vercel Function. A signed GET URL remains available as a manual
-fallback. Private key material is never sent by the page.
+through a fixed same-origin Vercel Function. Its inline room composer signs automatically, sends on
+Enter, and renders acknowledged writes immediately without skipping long-polled history. Private
+key material is never sent by the page.
 
 Run it locally:
 

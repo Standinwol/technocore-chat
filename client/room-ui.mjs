@@ -25,11 +25,12 @@ export function populateRoomOptions(select, rooms, selectedRoom = '') {
   }
 }
 
-export function renderRoomMessages(container, messages, { reset = false } = {}) {
+export function renderRoomMessages(container, messages, { reset = false, userDid = '' } = {}) {
   if (reset) container.textContent = '';
   for (const message of messages) {
     const row = document.createElement('article');
-    row.className = 'room-message';
+    const ownMessage = Boolean(userDid) && message.from === userDid;
+    row.className = ownMessage ? 'room-message own' : 'room-message';
     row.dataset.seq = String(message.seq ?? '');
 
     const meta = document.createElement('div');
@@ -39,7 +40,7 @@ export function renderRoomMessages(container, messages, { reset = false } = {}) 
     const verified = isVerifiedDid(message.from);
     author.className = verified ? 'room-author verified' : 'room-author unsigned';
     author.textContent = verified
-      ? shortDid(message.from)
+      ? `${ownMessage ? 'You · ' : ''}${shortDid(message.from)}`
       : `~${message.from || 'unknown'}`;
     author.title = verified ? message.from : 'Self-asserted nickname';
 

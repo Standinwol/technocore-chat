@@ -19,7 +19,6 @@ import {
   tickerFromStream,
 } from './market.mjs';
 import {
-  buildSignedMessageUrl,
   listTechnocoreRooms,
   nextTechnocoreNonce,
   normalizeRoom,
@@ -29,6 +28,8 @@ import {
   signTechnocoreMessage,
 } from './technocore.mjs';
 import { populateRoomOptions, renderRoomMessages } from './room-ui.mjs';
+
+const TECHNOCORE_ORIGIN = 'https://technocore.chat';
 
 export {
   canonicalSnapshot,
@@ -78,13 +79,9 @@ function startApp() {
     roomStatus: document.getElementById('room-status'),
     roomCursor: document.getElementById('room-cursor'),
     roomLog: document.getElementById('room-log'),
-    technocoreOrigin: document.getElementById('technocore-origin'),
-    technocoreRoom: document.getElementById('technocore-room'),
-    technocoreMessage: document.getElementById('technocore-message'),
-    technocoreNonce: document.getElementById('technocore-nonce'),
-    technocoreSignature: document.getElementById('technocore-signature'),
-    signedUrl: document.getElementById('signed-url'),
-    publishStatus: document.getElementById('publish-status'),
+    roomComposer: document.getElementById('room-composer'),
+    roomMessage: document.getElementById('room-message'),
+    roomComposeStatus: document.getElementById('room-compose-status'),
   };
   const buttons = {
     copyDid: document.getElementById('copy-did'),
@@ -94,10 +91,7 @@ function startApp() {
     useAgentAnswer: document.getElementById('use-agent-answer'),
     refreshRooms: document.getElementById('refresh-rooms'),
     connectRoom: document.getElementById('connect-room'),
-    signTechnocore: document.getElementById('sign-technocore'),
-    postTechnocore: document.getElementById('post-technocore'),
-    copySignedUrl: document.getElementById('copy-signed-url'),
-    openSignedUrl: document.getElementById('open-signed-url'),
+    sendRoomMessage: document.getElementById('send-room-message'),
   };
   let identity = null;
   let tickers = new Map();
@@ -111,6 +105,8 @@ function startApp() {
   let roomAbort = null;
   let activeRoom = '';
   let roomCursor = 0;
+  let roomPosting = false;
+  const renderedRoomSequences = new Set();
 
   function loadWatchlist() {
     try {
@@ -286,6 +282,24 @@ function startApp() {
     elements.roomStatus.classList.toggle('error', error);
   }
 
+  function setRoomComposerStatus(message, { error = false } = {}) {
+    elements.roomComposeStatus.textContent = message;
+    elements.roomComposeStatus.classList.toggle('error', error);
+  }
+
+  function refreshRoomComposer({ preserveStatus = false } = {}) {
+    const hasMessage = Boolean(elements.roomMessage.value.trim());
+    buttons.sendRoomMessage.disabled = !identity || !activeRoom || !hasMessage || roomPosting;
+    if (preserveStatus) return;
+    if (!identity) {
+      setRoomComposerStatus('Generate or import a DID before sending a message.');
+    } else if (!activeRoom) {
+      setRoomComposerStatus('Connect to a room before sending a message.');
+    } else {
+      setRoomComposerStatus(`Messages are signed automatically and posted to /r/${activeRoom}.`);
+    }
+  }
+
   function updateRoomCursor(value) {
     roomCursor = Math.max(roomCursor, Number(value) || 0);
     elements.roomCursor.textContent = roomCursor ? `Sequence ${roomCursor}` : 'Sequence —';
@@ -299,20 +313,36 @@ function startApp() {
     elements.roomLog.appendChild(empty);
   }
 
-  function applyRoomView(view, { reset = false } = {}) {
+  function applyRoomView(view, { reset = false, advanceCursor = true } = {}) {
     const messages = Array.isArray(view?.messages) ? view.messages : [];
     const previous = roomCursor;
-    if (reset && !messages.length) showEmptyRoom();
-    else renderRoomMessages(elements.roomLog, messages, { reset });
-    if (previous && messages.length && Number(messages[0].seq) > previous + 1) {
+    if (reset) renderedRoomSequences.clear();
+    const freshMessages = messages.filter((message) => {
+      const sequence = Number(message?.seq);
+      if (!Number.isInteger(sequence) || sequence < 1) return true;
+      if (renderedRoomSequences.has(sequence)) return false;
+      renderedRoomSequences.add(sequence);
+      return true;
+    });
+    if (reset && !freshMessages.length) showEmptyRoom();
+    else if (freshMessages.length) {
+      elements.roomLog.querySelector('.room-empty')?.remove();
+      renderRoomMessages(elements.roomLog, freshMessages, {
+        reset,
+        userDid: identity?.did || '',
+      });
+    }
+    if (advanceCursor && previous && messages.length && Number(messages[0].seq) > previous + 1) {
       setRoomState(
         'Connected',
         `History gap detected before sequence ${messages[0].seq}; older records left the room ring.`,
         { active: true, error: true },
       );
     }
-    for (const message of messages) updateRoomCursor(message.seq);
-    updateRoomCursor(view?.last_seq);
+    if (advanceCursor) {
+      for (const message of messages) updateRoomCursor(message.seq);
+      updateRoomCursor(view?.last_seq);
+    }
   }
 
   function waitBeforeRoomRetry(milliseconds, signal) {
@@ -361,9 +391,10 @@ function startApp() {
     roomAbort = controller;
     activeRoom = room;
     roomCursor = 0;
+    renderedRoomSequences.clear();
     elements.roomCursor.textContent = 'Sequence —';
     elements.chatRoom.value = room;
-    elements.technocoreRoom.value = room;
+    refreshRoomComposer();
     setRoomState('Connecting', `Loading /r/${room} history…`);
     try {
       const view = await readTechnocoreRoom(room, { limit: 50, signal: controller.signal });
@@ -374,6 +405,7 @@ function startApp() {
     } catch (error) {
       if (controller.signal.aborted || error.name === 'AbortError') return;
       activeRoom = '';
+      refreshRoomComposer();
       const reason = String(error.message || error).split('\n')[0].slice(0, 180);
       setRoomState('Disconnected', reason, { error: true });
     }
@@ -402,7 +434,6 @@ function startApp() {
     try {
       const nextIdentity = await createIdentity(seed);
       identity = nextIdentity;
-      invalidateSignedMessage();
       elements.seed.value = identity.seed;
       elements.did.value = identity.did;
       elements.identityState.textContent = 'Ready';
@@ -413,12 +444,10 @@ function startApp() {
       } catch (_) {
         elements.identityMessage.textContent = 'DID is active, but this browser blocked local storage.';
       }
-      for (const button of [buttons.copyDid, buttons.copySeed, buttons.downloadSeed, buttons.forget,
-        buttons.signTechnocore, buttons.postTechnocore]) {
+      for (const button of [buttons.copyDid, buttons.copySeed, buttons.downloadSeed, buttons.forget]) {
         button.disabled = false;
       }
-      elements.publishStatus.textContent = 'DID ready. Write and sign a message.';
-      elements.publishStatus.classList.remove('error');
+      refreshRoomComposer();
     } catch (error) {
       elements.identityMessage.textContent = identity
         ? `${error.message} The current DID is unchanged.`
@@ -436,13 +465,10 @@ function startApp() {
     elements.identityState.textContent = 'Not connected';
     elements.identityState.classList.remove('active');
     elements.identityMessage.textContent = 'Private key material was removed from this browser.';
-    for (const button of [buttons.copyDid, buttons.copySeed, buttons.downloadSeed, buttons.forget,
-      buttons.signTechnocore, buttons.postTechnocore, buttons.copySignedUrl,
-      buttons.openSignedUrl]) button.disabled = true;
-    elements.technocoreNonce.value = '';
-    elements.technocoreSignature.value = '';
-    elements.signedUrl.value = '';
-    elements.publishStatus.textContent = 'Private key material was removed from this browser.';
+    for (const button of [buttons.copyDid, buttons.copySeed, buttons.downloadSeed, buttons.forget]) {
+      button.disabled = true;
+    }
+    refreshRoomComposer();
   }
 
   async function copyText(value, message, statusElement = elements.identityMessage) {
@@ -468,32 +494,49 @@ function startApp() {
     elements.identityMessage.textContent = 'Seed file downloaded. Store it securely.';
   }
 
-  function invalidateSignedMessage() {
-    elements.technocoreNonce.value = '';
-    elements.technocoreSignature.value = '';
-    elements.signedUrl.value = '';
-    buttons.copySignedUrl.disabled = true;
-    buttons.openSignedUrl.disabled = true;
-    if (identity) elements.publishStatus.textContent = 'Message changed. Sign it to generate a new URL.';
+  async function prepareRoomMessage(room, message) {
+    if (!identity) throw new Error('Generate or import a DID first.');
+    const nonce = nextTechnocoreNonce(localStorage, TECHNOCORE_ORIGIN, identity.did, room);
+    const signed = await signTechnocoreMessage(identity, room, nonce, message);
+    saveTechnocoreNonce(
+      localStorage,
+      TECHNOCORE_ORIGIN,
+      identity.did,
+      signed.room,
+      signed.nonce,
+    );
+    return signed;
   }
 
-  async function prepareSignedMessage() {
-    if (!identity) throw new Error('Generate or import a DID first.');
-    const origin = elements.technocoreOrigin.value;
-    const room = normalizeRoom(elements.technocoreRoom.value);
-    const nonce = nextTechnocoreNonce(localStorage, origin, identity.did, room);
-    const signed = await signTechnocoreMessage(
-      identity, room, nonce, elements.technocoreMessage.value,
-    );
-    const url = buildSignedMessageUrl(origin, signed);
-    saveTechnocoreNonce(localStorage, origin, identity.did, room, signed.nonce);
-    elements.technocoreRoom.value = signed.room;
-    elements.chatRoom.value = signed.room;
-    elements.technocoreMessage.value = signed.text;
-    elements.technocoreNonce.value = signed.nonce;
-    elements.technocoreSignature.value = signed.sig;
-    elements.signedUrl.value = url;
-    return { signed, url };
+  async function sendRoomMessage() {
+    if (!identity || !activeRoom || roomPosting) return;
+    const room = activeRoom;
+    const draft = elements.roomMessage.value;
+    roomPosting = true;
+    refreshRoomComposer({ preserveStatus: true });
+    setRoomComposerStatus(`Signing and sending to /r/${room}…`);
+    try {
+      const signed = await prepareRoomMessage(room, draft);
+      const view = await postSignedTechnocoreMessage(signed);
+      const sequence = Number(view?.posted?.seq);
+      if (!Number.isInteger(sequence) || sequence < 1) {
+        throw new Error('Technocore accepted the request but returned no posted sequence.');
+      }
+      if (activeRoom === room) {
+        // Render the acknowledged write immediately, but let the long poll advance the
+        // cursor so messages posted just before ours cannot be skipped.
+        applyRoomView({ messages: [view.posted] }, { advanceCursor: false });
+      }
+      if (elements.roomMessage.value === draft) elements.roomMessage.value = '';
+      setRoomComposerStatus(`Sent as sequence #${sequence} in /r/${room}.`);
+    } catch (error) {
+      const reason = String(error.message || error).split('\n')[0].slice(0, 180);
+      setRoomComposerStatus(`Send failed: ${reason}`, { error: true });
+    } finally {
+      roomPosting = false;
+      refreshRoomComposer({ preserveStatus: true });
+      elements.roomMessage.focus();
+    }
   }
 
   function currentTickers() {
@@ -600,7 +643,6 @@ function startApp() {
   elements.roomSelect.addEventListener('change', () => {
     if (!elements.roomSelect.value) return;
     elements.chatRoom.value = elements.roomSelect.value;
-    elements.technocoreRoom.value = elements.roomSelect.value;
   });
   elements.chatRoom.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') connectRoom();
@@ -615,71 +657,26 @@ function startApp() {
   });
   elements.reportInterval.addEventListener('change', configureReports);
   buttons.useAgentAnswer.addEventListener('click', () => {
-    elements.technocoreMessage.value = latestAgentAnswer;
-    invalidateSignedMessage();
-    elements.technocoreMessage.focus();
+    elements.roomMessage.value = latestAgentAnswer;
+    refreshRoomComposer();
+    elements.roomMessage.focus();
   });
-  for (const input of [elements.technocoreOrigin, elements.technocoreRoom, elements.technocoreMessage]) {
-    input.addEventListener('input', invalidateSignedMessage);
-  }
-  buttons.signTechnocore.addEventListener('click', async () => {
-    if (!identity) return;
-    try {
-      await prepareSignedMessage();
-      buttons.copySignedUrl.disabled = false;
-      buttons.openSignedUrl.disabled = false;
-      elements.publishStatus.textContent = 'Message signed. Copy or open the URL to publish it.';
-      elements.publishStatus.classList.remove('error');
-    } catch (error) {
-      elements.publishStatus.textContent = `Signing failed: ${error.message}`;
-      elements.publishStatus.classList.add('error');
-    }
+  elements.roomMessage.addEventListener('input', () => {
+    refreshRoomComposer({ preserveStatus: true });
   });
-  buttons.postTechnocore.addEventListener('click', async () => {
-    if (!identity) return;
-    buttons.postTechnocore.disabled = true;
-    elements.publishStatus.textContent = 'Signing and posting…';
-    elements.publishStatus.classList.remove('error');
-    try {
-      const { signed } = await prepareSignedMessage();
-      const view = await postSignedTechnocoreMessage(signed);
-      const sequence = Number(view?.posted?.seq);
-      if (!Number.isInteger(sequence) || sequence < 1) {
-        throw new Error('Technocore accepted the request but returned no posted sequence.');
-      }
-      buttons.copySignedUrl.disabled = true;
-      buttons.openSignedUrl.disabled = true;
-      elements.signedUrl.value = '';
-      elements.publishStatus.textContent = `Posted as sequence #${sequence} by ${identity.did}.`;
-    } catch (error) {
-      buttons.copySignedUrl.disabled = !elements.signedUrl.value;
-      buttons.openSignedUrl.disabled = !elements.signedUrl.value;
-      elements.publishStatus.textContent = `Post failed: ${String(error.message || error).split('\n')[0]}`;
-      elements.publishStatus.classList.add('error');
-    } finally {
-      buttons.postTechnocore.disabled = false;
-    }
+  elements.roomComposer.addEventListener('submit', (event) => {
+    event.preventDefault();
+    void sendRoomMessage();
   });
-  buttons.copySignedUrl.addEventListener('click', () => {
-    if (elements.signedUrl.value) copyText(elements.signedUrl.value, 'Signed URL copied.', elements.publishStatus);
-  });
-  buttons.openSignedUrl.addEventListener('click', () => {
-    if (!elements.signedUrl.value) return;
-    const opened = window.open(elements.signedUrl.value, '_blank', 'noopener,noreferrer');
-    if (!opened) {
-      elements.publishStatus.textContent = 'The browser blocked the new tab. Allow popups or copy the signed URL.';
-      elements.publishStatus.classList.add('error');
-      return;
-    }
-    elements.signedUrl.value = '';
-    buttons.copySignedUrl.disabled = true;
-    buttons.openSignedUrl.disabled = true;
-    elements.publishStatus.textContent = 'Opened Technocore in a new tab. Read the number in [brackets] to get your sequence.';
-    elements.publishStatus.classList.remove('error');
+  elements.roomMessage.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
+    event.preventDefault();
+    elements.roomComposer.requestSubmit();
   });
 
   renderMarket();
   addAgentMessage('agent', 'Hello. I track the live Binance data in your watchlist. Try “BTC price” or “Top losers”.');
+  refreshRoomComposer();
   const savedSeed = loadIdentitySeed(localStorage, sessionStorage);
   if (savedSeed) {
     elements.identityMessage.textContent = 'Restoring saved DID…';

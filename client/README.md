@@ -26,9 +26,9 @@ in each JSON message, while SQLite on the VPS stores agent cursors/nonces/outbox
    generate the Host seed, and put the User DID in `ALLOWED_USER_DIDS`.
 4. Start the systemd Host service. `TECHNOCORE_URL` is optional and defaults to
    `https://technocore.chat`.
-5. In the client Rooms panel, enter the private mailbox name and connect. Put the same room in the
-   Publish panel, write `BTC price`, and use **Sign & post**. The UI shows the returned sequence;
-   the signed Host reply appears in room history as a verified DID.
+5. In the client Rooms panel, enter the private mailbox name and connect. Write `BTC price` in the
+   composer and press **Send** (or Enter). The browser signs and posts automatically, shows the
+   returned sequence, and renders the signed Host reply in the same history as a verified DID.
 
 The private mailbox is intentionally not embedded in client source or Vercel environment output.
 Anyone who learns it can read it, so use a long random suffix and treat the URL as a secret. Message

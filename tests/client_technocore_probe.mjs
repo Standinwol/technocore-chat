@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { handleTechnocoreProxy } from '../client/api/technocore.mjs';
+import { renderRoomMessages } from '../client/room-ui.mjs';
 import {
   TechnocoreHttpError,
   listTechnocoreRooms,
@@ -168,5 +169,35 @@ assert.equal(rejectedUnsignedPost.status, 400);
 const roomUiSource = readFileSync(new URL('../client/room-ui.mjs', import.meta.url), 'utf8');
 assert.doesNotMatch(roomUiSource, /innerHTML|insertAdjacentHTML/);
 assert.match(roomUiSource, /textContent/);
+
+function fakeElement(tagName) {
+  let text = '';
+  return {
+    tagName,
+    children: [],
+    dataset: {},
+    scrollHeight: 100,
+    scrollTop: 0,
+    append(...children) { this.children.push(...children); },
+    appendChild(child) { this.children.push(child); return child; },
+    set textContent(value) {
+      text = String(value);
+      if (!text) this.children = [];
+    },
+    get textContent() { return text; },
+  };
+}
+
+globalThis.document = { createElement: (tagName) => fakeElement(tagName) };
+const roomContainer = fakeElement('div');
+renderRoomMessages(roomContainer, [{
+  seq: 9,
+  from: nonceDid,
+  text: 'direct room message',
+  ts: 'now',
+}], { userDid: nonceDid });
+assert.equal(roomContainer.children[0].className, 'room-message own');
+assert.match(roomContainer.children[0].children[0].children[0].textContent, /^You · /);
+delete globalThis.document;
 
 console.log('client technocore probe: ok');
