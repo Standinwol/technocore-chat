@@ -9,8 +9,8 @@ Technocore remains the transport and Vercel remains the browser origin.
 
 ## Trust and persistence
 
-- `HOST_SEED_FILE` exists only on the VPS. The client receives only `HOST_DID` through
-  `/api/host` and highlights a Host message only when its exact signed DID matches.
+- `HOST_SEED_FILE` exists only on the VPS. Replies still carry its verified DID in Technocore JSON,
+  but the client does not configure or specially label a Host identity.
 - `MAILBOX_ROOM` must begin `mb-p-`: `mb-` refuses unsigned writes and `p-` keeps the room out
   of public room listings. The random room suffix is still a bearer secret, not encryption.
 - `ALLOWED_USER_DIDS` prevents any other signed DID that learns the room name from invoking the
@@ -67,8 +67,8 @@ sudo systemctl status signal-id-agent
 sudo journalctl -u signal-id-agent -f
 ```
 
-Put the printed public DID in the Vercel project's `HOST_DID` environment variable and redeploy
-the client. Do not add `HOST_SEED_FILE` or the seed itself to Vercel.
+The printed public DID is useful for logs and manual verification. Nothing from `HOST_SEED_FILE`
+or the Host seed belongs in Vercel.
 
 ## Commands and schedules
 

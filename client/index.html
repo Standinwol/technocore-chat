@@ -72,56 +72,6 @@
         <button id="forget-did" class="button button-danger" type="button" disabled>Remove from this browser</button>
       </div>
 
-      <div class="identity-services">
-        <section class="vault-card" aria-labelledby="vault-title">
-          <div class="subpanel-heading">
-            <div>
-              <p class="section-kicker">Encrypted storage</p>
-              <h3 id="vault-title">User DID vault</h3>
-            </div>
-            <span id="vault-state" class="state-pill">Empty</span>
-          </div>
-          <div class="vault-grid">
-            <div class="field-group">
-              <label for="vault-identities">Saved identities</label>
-              <select id="vault-identities">
-                <option value="">No encrypted identities</option>
-              </select>
-            </div>
-            <div class="field-group">
-              <label for="identity-label">Identity label</label>
-              <input id="identity-label" maxlength="48" value="Trading DID"
-                     autocomplete="off" placeholder="Trading DID">
-            </div>
-            <div class="field-group vault-passphrase-field">
-              <label for="vault-passphrase">Vault passphrase</label>
-              <input id="vault-passphrase" type="password" minlength="8"
-                     autocomplete="current-password" placeholder="At least 8 characters">
-            </div>
-          </div>
-          <div class="button-row compact-buttons">
-            <button id="save-vault" class="button button-secondary" type="button" disabled>Save encrypted</button>
-            <button id="unlock-vault" class="button button-primary" type="button" disabled>Unlock selected</button>
-            <button id="remove-vault" class="button button-danger" type="button" disabled>Delete saved</button>
-          </div>
-          <p id="vault-message" class="field-help" aria-live="polite">The passphrase is never stored.</p>
-        </section>
-
-        <section class="host-card" aria-labelledby="host-title">
-          <div class="subpanel-heading">
-            <div>
-              <p class="section-kicker">Service identity</p>
-              <h3 id="host-title">VPS Host DID</h3>
-            </div>
-            <span id="host-state" class="state-pill">Not configured</span>
-          </div>
-          <div class="field-group">
-            <label for="host-did">Expected response signer</label>
-            <input id="host-did" type="text" readonly value="Configure HOST_DID on Vercel">
-          </div>
-          <p id="host-message" class="field-help" aria-live="polite">Only the public DID reaches this page. The Host seed stays on the VPS.</p>
-        </section>
-      </div>
     </section>
 
     <section class="agent-section" aria-labelledby="agent-title">

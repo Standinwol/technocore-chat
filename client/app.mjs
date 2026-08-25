@@ -3,11 +3,7 @@ import {
   createIdentity,
   hex,
   loadIdentitySeed,
-  loadIdentityVault,
-  removeIdentityFromVault,
   saveIdentitySeed,
-  saveIdentityToVault,
-  unlockIdentityFromVault,
 } from './identity.mjs';
 import {
   API_URL,
@@ -39,12 +35,8 @@ export {
   clearIdentitySeed,
   createIdentity,
   loadIdentitySeed,
-  loadIdentityVault,
-  removeIdentityFromVault,
-  saveIdentityToVault,
   saveIdentitySeed,
   signSnapshot,
-  unlockIdentityFromVault,
 } from './identity.mjs';
 export {
   answerCryptoQuery,
@@ -71,14 +63,6 @@ function startApp() {
     did: document.getElementById('did'),
     identityState: document.getElementById('identity-state'),
     identityMessage: document.getElementById('identity-message'),
-    vaultState: document.getElementById('vault-state'),
-    vaultIdentities: document.getElementById('vault-identities'),
-    identityLabel: document.getElementById('identity-label'),
-    vaultPassphrase: document.getElementById('vault-passphrase'),
-    vaultMessage: document.getElementById('vault-message'),
-    hostState: document.getElementById('host-state'),
-    hostDid: document.getElementById('host-did'),
-    hostMessage: document.getElementById('host-message'),
     marketStatus: document.getElementById('market-status'),
     liveDot: document.getElementById('live-dot'),
     marketMessage: document.getElementById('market-message'),
@@ -107,9 +91,6 @@ function startApp() {
     copySeed: document.getElementById('copy-seed'),
     downloadSeed: document.getElementById('download-seed'),
     forget: document.getElementById('forget-did'),
-    saveVault: document.getElementById('save-vault'),
-    unlockVault: document.getElementById('unlock-vault'),
-    removeVault: document.getElementById('remove-vault'),
     useAgentAnswer: document.getElementById('use-agent-answer'),
     refreshRooms: document.getElementById('refresh-rooms'),
     connectRoom: document.getElementById('connect-room'),
@@ -119,7 +100,6 @@ function startApp() {
     openSignedUrl: document.getElementById('open-signed-url'),
   };
   let identity = null;
-  let hostDid = '';
   let tickers = new Map();
   let socket = null;
   let streamGeneration = 0;
@@ -323,7 +303,7 @@ function startApp() {
     const messages = Array.isArray(view?.messages) ? view.messages : [];
     const previous = roomCursor;
     if (reset && !messages.length) showEmptyRoom();
-    else renderRoomMessages(elements.roomLog, messages, { reset, hostDid });
+    else renderRoomMessages(elements.roomLog, messages, { reset });
     if (previous && messages.length && Number(messages[0].seq) > previous + 1) {
       setRoomState(
         'Connected',
@@ -417,110 +397,6 @@ function startApp() {
     }
   }
 
-  function refreshVaultOptions(preferredDid = identity?.did || '') {
-    const vault = loadIdentityVault(localStorage);
-    elements.vaultIdentities.textContent = '';
-    if (!vault.identities.length) {
-      const empty = document.createElement('option');
-      empty.value = '';
-      empty.textContent = 'No encrypted identities';
-      elements.vaultIdentities.appendChild(empty);
-    } else {
-      for (const record of vault.identities) {
-        const option = document.createElement('option');
-        option.value = record.did;
-        option.textContent = `${record.label} — ${record.did.slice(8, 14)}…${record.did.slice(-6)}`;
-        if (record.did === preferredDid || (!preferredDid && record.did === vault.activeDid)) {
-          option.selected = true;
-        }
-        elements.vaultIdentities.appendChild(option);
-      }
-    }
-    const hasSaved = Boolean(elements.vaultIdentities.value);
-    elements.vaultState.textContent = vault.identities.length
-      ? `${vault.identities.length} saved`
-      : 'Empty';
-    elements.vaultState.classList.toggle('active', vault.identities.length > 0);
-    buttons.unlockVault.disabled = !hasSaved;
-    buttons.removeVault.disabled = !hasSaved;
-    buttons.saveVault.disabled = !identity;
-  }
-
-  async function saveActiveIdentityToVault() {
-    if (!identity) return;
-    buttons.saveVault.disabled = true;
-    elements.vaultMessage.textContent = 'Encrypting identity…';
-    try {
-      const record = await saveIdentityToVault(
-        localStorage,
-        identity,
-        elements.vaultPassphrase.value,
-        elements.identityLabel.value,
-      );
-      clearIdentitySeed(localStorage);
-      elements.vaultPassphrase.value = '';
-      refreshVaultOptions(record.did);
-      elements.vaultMessage.textContent = `${record.label} was encrypted and saved in this browser.`;
-      elements.identityMessage.textContent = 'Active for this tab and protected by the encrypted vault after refresh.';
-    } catch (error) {
-      elements.vaultMessage.textContent = error.message;
-    } finally {
-      buttons.saveVault.disabled = !identity;
-    }
-  }
-
-  async function unlockSelectedIdentity() {
-    const did = elements.vaultIdentities.value;
-    if (!did) return;
-    buttons.unlockVault.disabled = true;
-    elements.vaultMessage.textContent = 'Unlocking identity…';
-    try {
-      const unlocked = await unlockIdentityFromVault(
-        localStorage, did, elements.vaultPassphrase.value,
-      );
-      await activateSeed(unlocked.seed);
-      elements.vaultPassphrase.value = '';
-      refreshVaultOptions(unlocked.did);
-      elements.vaultMessage.textContent = 'Encrypted identity unlocked for this tab.';
-    } catch (error) {
-      elements.vaultMessage.textContent = error.message;
-    } finally {
-      buttons.unlockVault.disabled = !elements.vaultIdentities.value;
-    }
-  }
-
-  function removeSelectedVaultIdentity() {
-    const did = elements.vaultIdentities.value;
-    if (!did) return;
-    if (!window.confirm('Delete this encrypted identity from this browser? Export its seed first if you need it.')) {
-      return;
-    }
-    removeIdentityFromVault(localStorage, did);
-    refreshVaultOptions();
-    elements.vaultMessage.textContent = 'Encrypted identity deleted from this browser.';
-  }
-
-  async function loadHostIdentity() {
-    try {
-      const response = await fetch('/api/host', { headers: { Accept: 'application/json' } });
-      if (!response.ok) throw new Error(`Host API returned HTTP ${response.status}`);
-      const value = await response.json();
-      if (!value.configured || !/^did:key:z6Mk[1-9A-HJ-NP-Za-km-z]{44}$/.test(value.did || '')) {
-        throw new Error('Configure HOST_DID after the VPS Host identity is created.');
-      }
-      hostDid = value.did;
-      elements.hostDid.value = hostDid;
-      elements.hostState.textContent = 'Configured';
-      elements.hostState.classList.add('active');
-      elements.hostMessage.textContent = `${value.name || 'Signal ID Host'} responses are highlighted only when signed by this DID.`;
-    } catch (error) {
-      hostDid = '';
-      elements.hostState.textContent = 'Not configured';
-      elements.hostState.classList.remove('active');
-      elements.hostMessage.textContent = error.message;
-    }
-  }
-
   async function activateSeed(seed) {
     elements.identityMessage.textContent = 'Deriving Ed25519 public key…';
     try {
@@ -533,7 +409,7 @@ function startApp() {
       elements.identityState.classList.add('active');
       try {
         saveIdentitySeed(sessionStorage, identity.seed);
-        elements.identityMessage.textContent = 'Active for this tab. Save it encrypted to restore it after refresh.';
+        elements.identityMessage.textContent = 'Active for this tab. Download the seed before closing it if you need to restore this DID.';
       } catch (_) {
         elements.identityMessage.textContent = 'DID is active, but this browser blocked local storage.';
       }
@@ -541,8 +417,6 @@ function startApp() {
         buttons.signTechnocore, buttons.postTechnocore]) {
         button.disabled = false;
       }
-      buttons.saveVault.disabled = false;
-      refreshVaultOptions(identity.did);
       elements.publishStatus.textContent = 'DID ready. Write and sign a message.';
       elements.publishStatus.classList.remove('error');
     } catch (error) {
@@ -554,12 +428,6 @@ function startApp() {
   }
 
   function forgetIdentity() {
-    const did = identity?.did || '';
-    const saved = loadIdentityVault(localStorage).identities.some((record) => record.did === did);
-    if (saved && !window.confirm('Remove the active DID and its encrypted vault copy from this browser?')) {
-      return;
-    }
-    if (did) removeIdentityFromVault(localStorage, did);
     identity = null;
     clearIdentitySeed(localStorage, sessionStorage);
     elements.seed.value = '';
@@ -571,12 +439,10 @@ function startApp() {
     for (const button of [buttons.copyDid, buttons.copySeed, buttons.downloadSeed, buttons.forget,
       buttons.signTechnocore, buttons.postTechnocore, buttons.copySignedUrl,
       buttons.openSignedUrl]) button.disabled = true;
-    buttons.saveVault.disabled = true;
     elements.technocoreNonce.value = '';
     elements.technocoreSignature.value = '';
     elements.signedUrl.value = '';
     elements.publishStatus.textContent = 'Private key material was removed from this browser.';
-    refreshVaultOptions();
   }
 
   async function copyText(value, message, statusElement = elements.identityMessage) {
@@ -713,14 +579,6 @@ function startApp() {
   buttons.copySeed.addEventListener('click', () => identity && copyText(identity.seed, 'Private seed copied. Keep it secret.'));
   buttons.downloadSeed.addEventListener('click', downloadIdentity);
   buttons.forget.addEventListener('click', forgetIdentity);
-  buttons.saveVault.addEventListener('click', saveActiveIdentityToVault);
-  buttons.unlockVault.addEventListener('click', unlockSelectedIdentity);
-  buttons.removeVault.addEventListener('click', removeSelectedVaultIdentity);
-  elements.vaultIdentities.addEventListener('change', () => {
-    const selected = loadIdentityVault(localStorage).identities
-      .find((record) => record.did === elements.vaultIdentities.value);
-    if (selected) elements.identityLabel.value = selected.label;
-  });
 
   document.getElementById('symbol-form').addEventListener('submit', (event) => {
     event.preventDefault();
@@ -821,8 +679,6 @@ function startApp() {
   });
 
   renderMarket();
-  refreshVaultOptions();
-  loadHostIdentity();
   addAgentMessage('agent', 'Hello. I track the live Binance data in your watchlist. Try “BTC price” or “Top losers”.');
   const savedSeed = loadIdentitySeed(localStorage, sessionStorage);
   if (savedSeed) {
