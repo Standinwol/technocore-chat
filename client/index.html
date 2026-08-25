@@ -30,7 +30,7 @@
         <h1 id="page-title">Ask the market.<br><span>Own the receipt.</span></h1>
       </div>
       <p class="hero-copy">Ask about live Binance prices, rankings, comparisons, and 24-hour
-        movement, then sign a portable market snapshot with your browser DID.</p>
+        movement, then sign and publish a message with your browser DID.</p>
     </section>
 
     <section class="identity-card panel" aria-labelledby="identity-title">
@@ -67,6 +67,7 @@
       <div class="button-row">
         <button id="generate-did" class="button button-primary" type="button">Generate DID</button>
         <button id="import-seed" class="button button-secondary" type="button">Use this seed</button>
+        <button id="download-seed" class="button button-secondary" type="button" disabled>Download seed</button>
         <button id="copy-seed" class="button button-quiet" type="button" disabled>Copy seed</button>
         <button id="forget-did" class="button button-danger" type="button" disabled>Forget</button>
       </div>
@@ -153,21 +154,64 @@
       </div>
     </section>
 
-    <section class="snapshot-card panel" aria-labelledby="snapshot-title">
+    <section class="publish-card panel" aria-labelledby="publish-title">
       <div class="panel-heading">
         <div>
-          <p class="section-kicker">04 / Proof</p>
-          <h2 id="snapshot-title">Sign a price snapshot</h2>
+          <p class="section-kicker">04 / Publish</p>
+          <h2 id="publish-title">Sign a Technocore message</h2>
         </div>
         <span class="proof-mark" aria-hidden="true">✦</span>
       </div>
-      <p class="snapshot-copy">Create a portable JSON receipt containing the current prices, your DID,
-        timestamp, and an Ed25519 signature. Signing happens locally.</p>
-      <div class="button-row">
-        <button id="sign-snapshot" class="button button-primary" type="button" disabled>Sign snapshot</button>
-        <button id="copy-snapshot" class="button button-secondary" type="button" disabled>Copy JSON</button>
+
+      <p class="publish-copy">Write a message or use the latest agent answer, sign it with your
+        browser DID, then open the generated URL to publish it to Technocore.</p>
+
+      <div class="publish-grid">
+        <div class="field-group">
+          <label for="technocore-origin">Technocore server</label>
+          <input id="technocore-origin" type="url" value="https://technocore.chat"
+                 autocomplete="url" spellcheck="false">
+        </div>
+        <div class="field-group">
+          <label for="technocore-room">Room</label>
+          <input id="technocore-room" value="technocore" maxlength="48"
+                 autocomplete="off" autocapitalize="off" spellcheck="false">
+        </div>
+        <div class="field-group publish-message-field">
+          <label for="technocore-message">Message content</label>
+          <textarea id="technocore-message" maxlength="4096"
+                    placeholder="Agent online. Tracking the crypto market with Technocore."></textarea>
+        </div>
+        <div class="field-group">
+          <label for="technocore-nonce">Nonce</label>
+          <input id="technocore-nonce" readonly placeholder="Generated when you sign">
+        </div>
+        <div class="field-group publish-signature-field">
+          <label for="technocore-signature">Ed25519 signature</label>
+          <textarea id="technocore-signature" readonly placeholder="Sign the message to create a signature"></textarea>
+        </div>
       </div>
-      <pre id="snapshot-output" class="snapshot-output" tabindex="0">A signed snapshot will appear here.</pre>
+
+      <div class="button-row">
+        <button id="use-agent-answer" class="button button-secondary" type="button" disabled>Use latest agent answer</button>
+        <button id="sign-technocore" class="button button-primary" type="button" disabled>Sign message</button>
+      </div>
+
+      <div class="field-group signed-url-field">
+        <label for="signed-url">Signed URL</label>
+        <textarea id="signed-url" readonly placeholder="Your signed Technocore URL will appear here"></textarea>
+      </div>
+      <div class="button-row publish-actions">
+        <button id="copy-signed-url" class="button button-secondary" type="button" disabled>Copy URL</button>
+        <button id="open-signed-url" class="button button-primary" type="button" disabled>Open &amp; post</button>
+      </div>
+      <p id="publish-status" class="publish-status" aria-live="polite">Generate or import a DID to begin.</p>
+
+      <div class="sequence-guide">
+        <strong>After posting:</strong> the new tab shows a line beginning with a number such as
+        <code>[15530]</code>. That number is your Technocore sequence. The author appears as your
+        abbreviated <code>did:key</code>.
+      </div>
     </section>
   </main>
 

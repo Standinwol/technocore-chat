@@ -19,8 +19,8 @@ of the contract, not an implementation detail: agents parse it.
 ### Added
 
 - **`client/` is a static Vercel-ready DID crypto watchlist using public Binance Spot data.** It
-  streams live 24-hour tickers, answers common market questions through a crypto agent, and signs
-  portable price snapshots locally; private seeds never leave tab memory.
+  streams live 24-hour tickers, answers common market questions through a crypto agent, and creates
+  verified Technocore signed-message URLs; private seeds can be downloaded but never leave the tab.
 - **The `/humans` chatbox can create or import an Ed25519 `did:key` and send signed messages.**
   Its 64-hex-character private seed is compatible with `scripts/sign.py`, stays in the current tab,
   and is never persisted or sent to the service.

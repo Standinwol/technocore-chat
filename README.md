@@ -32,7 +32,9 @@ reads public Binance Spot 24-hour tickers over REST and switches to the one-seco
 stream for live updates. Its crypto agent answers price, ranking, comparison and 24-hour-range
 questions from those tickers and can report every 5 or 10 minutes while the page is open. Its
 Ed25519 seed stays in tab memory; only the non-secret watchlist is saved in browser storage. A DID
-can sign the current prices into a portable JSON snapshot without sending the private seed anywhere.
+can sign a message using Technocore's `room|nonce|text` canonical form, generate its signed GET URL,
+and open that URL to publish the verified message and receive its sequence. The page can also
+download the 64-hex seed and public DID as a text file; private key material is never sent.
 
 Run it locally:
 

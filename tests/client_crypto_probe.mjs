@@ -4,12 +4,15 @@ import { readFileSync } from 'node:fs';
 
 import {
   answerCryptoQuery,
+  buildSignedMessageUrl,
   buildPeriodicReport,
   canonicalSnapshot,
+  cleanTechnocoreText,
   createIdentity,
   formatPrice,
   normalizeSymbol,
   signSnapshot,
+  signTechnocoreMessage,
   tickerFromRest,
   tickerFromStream,
 } from '../client/app.mjs';
@@ -67,10 +70,15 @@ assert.match(report, /Weakest performer: ETH/);
 assert.match(report, /2 up\/flat · 1 down/);
 
 const html = readFileSync(new URL('../client/index.html', import.meta.url), 'utf8');
+const appSource = readFileSync(new URL('../client/app.mjs', import.meta.url), 'utf8');
 const ids = [...html.matchAll(/\sid="([^"]+)"/g)].map((match) => match[1]);
 assert.equal(new Set(ids).size, ids.length, 'HTML ids must be unique');
-for (const id of ['agent-log', 'agent-form', 'agent-question', 'report-interval', 'ticker-list']) {
+for (const id of ['agent-log', 'agent-form', 'agent-question', 'report-interval', 'ticker-list',
+  'technocore-message', 'sign-technocore', 'signed-url', 'download-seed']) {
   assert.ok(ids.includes(id), `missing #${id}`);
+}
+for (const match of appSource.matchAll(/getElementById\('([^']+)'\)/g)) {
+  assert.ok(ids.includes(match[1]), `app references missing #${match[1]}`);
 }
 
 const seed = '000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f';
@@ -78,6 +86,29 @@ const identity = await createIdentity(seed, webcrypto);
 assert.match(identity.did, /^did:key:z6Mk/);
 assert.equal(identity.did.length, 56);
 assert.equal(identity.seed, seed);
+
+assert.equal(cleanTechnocoreText('  hello\nTechnocore\u200b  '), 'hello Technocore');
+const signedMessage = await signTechnocoreMessage(
+  identity, 'Technocore', '1700000005001', '  hello\nTechnocore\u200b  ', webcrypto,
+);
+assert.equal(signedMessage.room, 'technocore');
+assert.equal(signedMessage.text, 'hello Technocore');
+assert.equal(signedMessage.canonical, 'technocore|1700000005001|hello Technocore');
+assert.match(signedMessage.sig, /^[A-Za-z0-9_-]{86}$/);
+assert.equal(await webcrypto.subtle.verify(
+  'Ed25519',
+  identity.verifyKey,
+  Buffer.from(signedMessage.sig, 'base64url'),
+  new TextEncoder().encode(signedMessage.canonical),
+), true);
+const signedUrl = buildSignedMessageUrl('https://technocore.chat/docs', signedMessage);
+assert.match(signedUrl, /^https:\/\/technocore\.chat\/r\/technocore\/say-signed\/did%3Akey%3Az6Mk/);
+assert.match(signedUrl, /\/1700000005001\/hello%20Technocore$/);
+assert.throws(() => buildSignedMessageUrl('http://example.com', signedMessage), /must use HTTPS/);
+await assert.rejects(
+  signTechnocoreMessage(identity, 'bad room', '1', 'hello', webcrypto),
+  /Room names/,
+);
 
 const observedAt = 1700000000000;
 const createdAt = 1700000005000;

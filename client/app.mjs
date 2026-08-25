@@ -3,6 +3,8 @@ const STREAM_URL = 'wss://stream.binance.com:9443/stream?streams=';
 const WATCHLIST_KEY = 'signal-id-watchlist-v1';
 const DEFAULT_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT'];
 const MAX_SYMBOLS = 8;
+const ROOM_RE = /^[a-z0-9][a-z0-9_-]{0,47}$/;
+const INVISIBLE = /[\p{Cc}\p{Cf}\p{Cs}\p{Co}\p{Zl}\p{Zp}]/gu;
 const PKCS8_ED25519 = new Uint8Array([
   0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70,
   0x04, 0x22, 0x04, 0x20,
@@ -69,6 +71,12 @@ function base64url(value) {
   return new Uint8Array(Buffer.from(padded, 'base64'));
 }
 
+function encodeBase64url(bytes) {
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
 function base58(bytes) {
   const alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
   let number = 0n;
@@ -131,6 +139,51 @@ export async function signSnapshot(identity, tickers, createdAt = Date.now(), cr
     'Ed25519', identity.key, new TextEncoder().encode(payload),
   );
   return JSON.stringify({ payload: JSON.parse(payload), signature: hex(new Uint8Array(signature)) }, null, 2);
+}
+
+export function cleanTechnocoreText(value) {
+  return String(value || '').replace(INVISIBLE, ' ').trim();
+}
+
+export async function signTechnocoreMessage(identity, room, nonce, message, cryptoApi = globalThis.crypto) {
+  if (!identity?.key || !identity?.did) throw new Error('Generate or import a DID first.');
+  const normalizedRoom = String(room || '').trim().toLowerCase();
+  if (!ROOM_RE.test(normalizedRoom)) {
+    throw new Error('Room names must use 1–48 lowercase letters, numbers, underscores, or hyphens.');
+  }
+  const normalizedNonce = String(nonce || '').trim();
+  if (!/^[0-9]{1,19}$/.test(normalizedNonce)) throw new Error('Nonce must contain 1–19 digits.');
+  const text = cleanTechnocoreText(message);
+  if (!text) throw new Error('Write a message before signing.');
+  if (text.length > 4096) throw new Error('Messages cannot exceed 4096 characters.');
+  const canonical = `${normalizedRoom}|${normalizedNonce}|${text}`;
+  const signature = await cryptoApi.subtle.sign(
+    'Ed25519', identity.key, new TextEncoder().encode(canonical),
+  );
+  return {
+    room: normalizedRoom,
+    did: identity.did,
+    sig: encodeBase64url(new Uint8Array(signature)),
+    nonce: normalizedNonce,
+    text,
+    canonical,
+  };
+}
+
+export function buildSignedMessageUrl(origin, signed) {
+  let server;
+  try {
+    server = new URL(String(origin || '').trim());
+  } catch (_) {
+    throw new Error('Enter a valid Technocore server URL.');
+  }
+  const local = server.hostname === 'localhost' || server.hostname === '127.0.0.1';
+  if (server.protocol !== 'https:' && !(local && server.protocol === 'http:')) {
+    throw new Error('The Technocore server must use HTTPS.');
+  }
+  const parts = [signed.room, 'say-signed', signed.did, signed.sig, signed.nonce, signed.text]
+    .map((part) => encodeURIComponent(part));
+  return `${server.origin}/r/${parts.join('/')}`;
 }
 
 const ASSET_ALIASES = {
@@ -280,25 +333,35 @@ function startApp() {
     marketMessage: document.getElementById('market-message'),
     tickerList: document.getElementById('ticker-list'),
     symbol: document.getElementById('symbol'),
-    snapshot: document.getElementById('snapshot-output'),
     agentLog: document.getElementById('agent-log'),
     agentQuestion: document.getElementById('agent-question'),
     reportInterval: document.getElementById('report-interval'),
     reportStatus: document.getElementById('report-status'),
+    technocoreOrigin: document.getElementById('technocore-origin'),
+    technocoreRoom: document.getElementById('technocore-room'),
+    technocoreMessage: document.getElementById('technocore-message'),
+    technocoreNonce: document.getElementById('technocore-nonce'),
+    technocoreSignature: document.getElementById('technocore-signature'),
+    signedUrl: document.getElementById('signed-url'),
+    publishStatus: document.getElementById('publish-status'),
   };
   const buttons = {
     copyDid: document.getElementById('copy-did'),
     copySeed: document.getElementById('copy-seed'),
+    downloadSeed: document.getElementById('download-seed'),
     forget: document.getElementById('forget-did'),
-    sign: document.getElementById('sign-snapshot'),
-    copySnapshot: document.getElementById('copy-snapshot'),
+    useAgentAnswer: document.getElementById('use-agent-answer'),
+    signTechnocore: document.getElementById('sign-technocore'),
+    copySignedUrl: document.getElementById('copy-signed-url'),
+    openSignedUrl: document.getElementById('open-signed-url'),
   };
   let identity = null;
   let tickers = new Map();
   let socket = null;
   let streamGeneration = 0;
   let reconnectTimer = null;
-  let signedSnapshot = '';
+  let latestAgentAnswer = '';
+  let lastNonce = 0;
   let reportTimer = null;
   let nextReportAt = 0;
   let reportCountdown = null;
@@ -339,7 +402,6 @@ function startApp() {
       cell.textContent = 'Your watchlist is empty. Add an asset above.';
       row.appendChild(cell);
       elements.tickerList.appendChild(row);
-      buttons.sign.disabled = true;
       return;
     }
 
@@ -395,7 +457,6 @@ function startApp() {
       row.append(assetCell, priceCell, changeCell, rangeCell, volumeCell, actionCell);
       elements.tickerList.appendChild(row);
     }
-    buttons.sign.disabled = !identity || !symbols.some((symbol) => tickers.has(symbol));
   }
 
   function setMarketState(message, connected) {
@@ -476,13 +537,18 @@ function startApp() {
     elements.identityMessage.textContent = 'Deriving Ed25519 public key…';
     try {
       identity = await createIdentity(seed);
+      lastNonce = 0;
+      invalidateSignedMessage();
       elements.seed.value = identity.seed;
       elements.did.value = identity.did;
       elements.identityState.textContent = 'Ready';
       elements.identityState.classList.add('active');
-      elements.identityMessage.textContent = 'Ready to sign price snapshots locally.';
-      for (const button of [buttons.copyDid, buttons.copySeed, buttons.forget]) button.disabled = false;
-      buttons.sign.disabled = !symbols.some((symbol) => tickers.has(symbol));
+      elements.identityMessage.textContent = 'Ready to sign Technocore messages locally.';
+      for (const button of [buttons.copyDid, buttons.copySeed, buttons.downloadSeed, buttons.forget, buttons.signTechnocore]) {
+        button.disabled = false;
+      }
+      elements.publishStatus.textContent = 'DID ready. Write and sign a message.';
+      elements.publishStatus.classList.remove('error');
     } catch (error) {
       identity = null;
       elements.identityMessage.textContent = error.message;
@@ -497,23 +563,51 @@ function startApp() {
     elements.identityState.textContent = 'Not connected';
     elements.identityState.classList.remove('active');
     elements.identityMessage.textContent = 'Private key material was removed from this tab.';
-    for (const button of [buttons.copyDid, buttons.copySeed, buttons.forget, buttons.sign]) button.disabled = true;
+    for (const button of [buttons.copyDid, buttons.copySeed, buttons.downloadSeed, buttons.forget,
+      buttons.signTechnocore, buttons.copySignedUrl, buttons.openSignedUrl]) button.disabled = true;
+    elements.technocoreNonce.value = '';
+    elements.technocoreSignature.value = '';
+    elements.signedUrl.value = '';
+    elements.publishStatus.textContent = 'Private key material was removed from this tab.';
   }
 
-  async function copyText(value, message) {
+  async function copyText(value, message, statusElement = elements.identityMessage) {
     try {
       await navigator.clipboard.writeText(value);
-      elements.identityMessage.textContent = message;
+      statusElement.textContent = message;
+      statusElement.classList.remove('error');
     } catch (_) {
-      elements.identityMessage.textContent = 'Clipboard access was blocked by the browser.';
+      statusElement.textContent = 'Clipboard access was blocked by the browser.';
+      statusElement.classList.add('error');
     }
+  }
+
+  function downloadIdentity() {
+    if (!identity) return;
+    const blob = new Blob([`seed: ${identity.seed}\ndid: ${identity.did}\n`], { type: 'text/plain' });
+    const href = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = href;
+    anchor.download = 'technocore-seed.txt';
+    anchor.click();
+    setTimeout(() => URL.revokeObjectURL(href), 0);
+    elements.identityMessage.textContent = 'Seed file downloaded. Store it securely.';
+  }
+
+  function invalidateSignedMessage() {
+    elements.technocoreNonce.value = '';
+    elements.technocoreSignature.value = '';
+    elements.signedUrl.value = '';
+    buttons.copySignedUrl.disabled = true;
+    buttons.openSignedUrl.disabled = true;
+    if (identity) elements.publishStatus.textContent = 'Message changed. Sign it to generate a new URL.';
   }
 
   function currentTickers() {
     return symbols.map((symbol) => tickers.get(symbol)).filter(Boolean);
   }
 
-  function addAgentMessage(role, text) {
+  function addAgentMessage(role, text, reusable = false) {
     const message = document.createElement('div');
     message.className = `agent-message ${role}`;
     const meta = document.createElement('p');
@@ -526,6 +620,10 @@ function startApp() {
     elements.agentLog.appendChild(message);
     while (elements.agentLog.children.length > 80) elements.agentLog.firstElementChild.remove();
     elements.agentLog.scrollTop = elements.agentLog.scrollHeight;
+    if (role === 'agent' && reusable) {
+      latestAgentAnswer = text;
+      buttons.useAgentAnswer.disabled = false;
+    }
   }
 
   function askAgent(question) {
@@ -533,7 +631,7 @@ function startApp() {
     if (!value) return;
     addAgentMessage('user', value);
     const answer = answerCryptoQuery(value, currentTickers());
-    addAgentMessage('agent', answer.text);
+    addAgentMessage('agent', answer.text, answer.intent !== 'waiting' && answer.intent !== 'help');
   }
 
   function updateReportStatus() {
@@ -561,7 +659,7 @@ function startApp() {
     updateReportStatus();
     reportCountdown = setInterval(updateReportStatus, 1000);
     reportTimer = setInterval(() => {
-      addAgentMessage('agent', buildPeriodicReport(currentTickers()));
+      addAgentMessage('agent', buildPeriodicReport(currentTickers()), true);
       nextReportAt = Date.now() + delay;
       updateReportStatus();
     }, delay);
@@ -585,6 +683,7 @@ function startApp() {
   });
   buttons.copyDid.addEventListener('click', () => identity && copyText(identity.did, 'DID copied.'));
   buttons.copySeed.addEventListener('click', () => identity && copyText(identity.seed, 'Private seed copied. Keep it secret.'));
+  buttons.downloadSeed.addEventListener('click', downloadIdentity);
   buttons.forget.addEventListener('click', forgetIdentity);
 
   document.getElementById('symbol-form').addEventListener('submit', (event) => {
@@ -611,18 +710,46 @@ function startApp() {
     button.addEventListener('click', () => askAgent(button.dataset.agentPrompt));
   });
   elements.reportInterval.addEventListener('change', configureReports);
-  buttons.sign.addEventListener('click', async () => {
+  buttons.useAgentAnswer.addEventListener('click', () => {
+    elements.technocoreMessage.value = latestAgentAnswer;
+    invalidateSignedMessage();
+    elements.technocoreMessage.focus();
+  });
+  for (const input of [elements.technocoreOrigin, elements.technocoreRoom, elements.technocoreMessage]) {
+    input.addEventListener('input', invalidateSignedMessage);
+  }
+  buttons.signTechnocore.addEventListener('click', async () => {
     if (!identity) return;
-    const values = symbols.map((symbol) => tickers.get(symbol)).filter(Boolean);
+    const nonce = String(Math.max(Date.now(), lastNonce + 1));
     try {
-      signedSnapshot = await signSnapshot(identity, values);
-      elements.snapshot.textContent = signedSnapshot;
-      buttons.copySnapshot.disabled = false;
+      const signed = await signTechnocoreMessage(
+        identity, elements.technocoreRoom.value, nonce, elements.technocoreMessage.value,
+      );
+      const url = buildSignedMessageUrl(elements.technocoreOrigin.value, signed);
+      lastNonce = Number(signed.nonce);
+      elements.technocoreRoom.value = signed.room;
+      elements.technocoreMessage.value = signed.text;
+      elements.technocoreNonce.value = signed.nonce;
+      elements.technocoreSignature.value = signed.sig;
+      elements.signedUrl.value = url;
+      buttons.copySignedUrl.disabled = false;
+      buttons.openSignedUrl.disabled = false;
+      elements.publishStatus.textContent = 'Message signed. Copy or open the URL to publish it.';
+      elements.publishStatus.classList.remove('error');
     } catch (error) {
-      elements.snapshot.textContent = `Signing failed: ${error.message}`;
+      elements.publishStatus.textContent = `Signing failed: ${error.message}`;
+      elements.publishStatus.classList.add('error');
     }
   });
-  buttons.copySnapshot.addEventListener('click', () => signedSnapshot && copyText(signedSnapshot, 'Signed snapshot JSON copied.'));
+  buttons.copySignedUrl.addEventListener('click', () => {
+    if (elements.signedUrl.value) copyText(elements.signedUrl.value, 'Signed URL copied.', elements.publishStatus);
+  });
+  buttons.openSignedUrl.addEventListener('click', () => {
+    if (!elements.signedUrl.value) return;
+    window.open(elements.signedUrl.value, '_blank', 'noopener,noreferrer');
+    elements.publishStatus.textContent = 'Opened Technocore in a new tab. Read the number in [brackets] to get your sequence.';
+    elements.publishStatus.classList.remove('error');
+  });
 
   renderMarket();
   addAgentMessage('agent', 'Hello. I track the live Binance data in your watchlist. Try “BTC price” or “Top losers”.');
