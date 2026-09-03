@@ -169,6 +169,8 @@ td { height: 86px; padding: 14px 20px; border-top: 1px solid var(--line); font-v
 .tclk-status.claimed, .tclk-status.refunded, .tclk-status.cancelled { color: var(--accent); border-color: rgba(184, 243, 74, 0.35); }
 .tclk-status.expired { color: #f1ba49; border-color: rgba(241, 186, 73, 0.38); }
 .tclk-facts { display: flex; flex-wrap: wrap; gap: 5px 10px; margin-top: 10px; color: #81948a; font-size: 0.64rem; }
+.tclk-contact { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; }
+.tclk-maker { min-width: 0; overflow: hidden; color: var(--cyan); text-overflow: ellipsis; white-space: nowrap; font-size: 0.64rem; }
 .tclk-paper.verified { color: var(--accent); }
 .tclk-paper.pending { color: #f1ba49; }
 .tclk-paper.missing, .tclk-paper.invalid, .tclk-paper.mismatch, .tclk-paper.unavailable { color: var(--red); }
@@ -185,9 +187,13 @@ td { height: 86px; padding: 14px 20px; border-top: 1px solid var(--line); font-v
 .room-message { width: min(86%, 760px); border: 1px solid var(--line); border-radius: 5px 15px 15px 15px; background: rgba(4, 13, 8, 0.56); padding: 12px 14px; }
 .room-message.own { align-self: flex-end; border-color: rgba(184, 243, 74, 0.28); border-radius: 15px 5px 15px 15px; background: rgba(184, 243, 74, 0.08); }
 .room-message-meta { display: flex; justify-content: space-between; gap: 16px; color: #71847a; font-size: 0.68rem; }
+.room-author-line { display: flex; min-width: 0; align-items: center; gap: 8px; }
 .room-author { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .room-author.verified { color: var(--cyan); }
 .room-author.unsigned { color: var(--muted); }
+.contact-actions { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 5px; }
+.contact-action { border: 1px solid var(--line); border-radius: 999px; color: #9eb0a6; background: rgba(255, 255, 255, 0.025); padding: 3px 7px; cursor: pointer; font-size: 0.58rem; font-weight: 700; }
+.contact-action:hover { border-color: var(--accent); color: var(--accent); }
 .room-message-body { margin: 8px 0 0; color: #c8d8ce; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.84rem; line-height: 1.58; }
 .room-empty { margin: auto; color: var(--muted); text-align: center; }
 .room-composer { padding: 16px 24px 14px; border-top: 1px solid var(--line); background: rgba(3, 10, 6, 0.42); }

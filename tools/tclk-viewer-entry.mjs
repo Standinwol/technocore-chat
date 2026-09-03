@@ -208,6 +208,19 @@ function element(tag, className = '', text = '') {
   return node;
 }
 
+function contactButton(label, action, did, sequence) {
+  const button = element('button', 'contact-action', label);
+  button.type = 'button';
+  button.dataset.contactAction = action;
+  button.dataset.did = did;
+  button.dataset.seq = String(sequence ?? '');
+  button.title = action === 'copy-did'
+    ? `Copy ${did}`
+    : `Reply to ${did} about offer #${sequence ?? '?'}`;
+  button.setAttribute?.('aria-label', button.title);
+  return button;
+}
+
 function renderDeal(deal, paperRecords) {
   const card = element('article', 'tclk-deal');
   const heading = element('div', 'tclk-deal-heading');
@@ -235,6 +248,17 @@ function renderDeal(deal, paperRecords) {
     facts.append(element('span', `tclk-paper ${paper.status}`, paper.label));
   }
 
+  const offerSequence = deal.timeline[0]?.seq;
+  const contact = element('div', 'tclk-contact');
+  const maker = element('code', 'tclk-maker', `Maker ${shortValue(deal.offer.from, 14, 6)}`);
+  maker.title = deal.offer.from;
+  const contactActions = element('span', 'contact-actions');
+  contactActions.append(
+    contactButton('Copy DID', 'copy-did', deal.offer.from, offerSequence),
+    contactButton('Reply', 'reply', deal.offer.from, offerSequence),
+  );
+  contact.append(maker, contactActions);
+
   const timeline = element('ol', 'tclk-timeline');
   for (const event of deal.timeline) {
     const item = element('li', event.ok ? 'accepted' : 'rejected');
@@ -244,7 +268,7 @@ function renderDeal(deal, paperRecords) {
     if (event.reason) item.title = event.reason;
     timeline.appendChild(item);
   }
-  card.append(heading, facts, timeline);
+  card.append(heading, facts, contact, timeline);
 
   if (deal.rejected.length) {
     const warning = element(

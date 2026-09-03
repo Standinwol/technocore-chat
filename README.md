@@ -35,7 +35,9 @@ active 64-hex Ed25519 seed stays in tab-scoped session storage, and users can do
 import. The client lists rooms, long-polls history, reads sequence cursors, and sends signed POSTs
 through a fixed same-origin Vercel Function. Its inline room composer signs automatically, sends on
 Enter, and renders acknowledged writes immediately without skipping long-polled history. Private
-key material is never sent by the page. A read-only `tclk/1` viewer recognizes signed protocol
+key material is never sent by the page. Copy DID and Reply actions expose the complete signed
+sender identity and prefill a public room reply with its source sequence; they do not create a DM
+or routed mention. A read-only `tclk/1` viewer recognizes signed protocol
 frames in the loaded room window, validates and folds them with `@flop-labs/tclk`, and checks a
 contract's public PAPER rehearsal record without treating it as funds or settlement.
 

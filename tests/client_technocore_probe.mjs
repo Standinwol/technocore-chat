@@ -231,7 +231,7 @@ renderRoomMessages(roomContainer, [{
 }], { userDid: nonceDid });
 assert.equal(roomContainer.children[0].className, 'room-message own');
 assert.equal(roomContainer.children[0].dataset.tclk, 'false');
-assert.match(roomContainer.children[0].children[0].children[0].textContent, /^You · /);
+assert.match(roomContainer.children[0].children[0].children[0].children[0].textContent, /^You · /);
 renderRoomMessages(roomContainer, [{
   seq: 10,
   from: nonceDid,
@@ -239,6 +239,17 @@ renderRoomMessages(roomContainer, [{
   ts: 'now',
 }], { userDid: nonceDid });
 assert.equal(roomContainer.children[1].dataset.tclk, 'true');
+renderRoomMessages(roomContainer, [{
+  seq: 11,
+  from: `${nonceDid.slice(0, -1)}2`,
+  text: 'remote signed message',
+  ts: 'now',
+}], { userDid: nonceDid });
+const remoteAuthorLine = roomContainer.children[2].children[0].children[0];
+assert.equal(remoteAuthorLine.children[1].children[0].textContent, 'Copy DID');
+assert.equal(remoteAuthorLine.children[1].children[0].dataset.did, `${nonceDid.slice(0, -1)}2`);
+assert.equal(remoteAuthorLine.children[1].children[1].textContent, 'Reply');
+assert.equal(remoteAuthorLine.children[1].children[1].dataset.seq, '11');
 delete globalThis.document;
 
 console.log('client technocore probe: ok');

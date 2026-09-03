@@ -549,6 +549,32 @@ function startApp() {
     }
   }
 
+  function prepareReply(did, sequence) {
+    if (!activeRoom || !String(did).startsWith('did:key:')) return;
+    const seq = Number(sequence);
+    const reference = Number.isSafeInteger(seq) && seq > 0 ? ` re #${seq}` : '';
+    const prefix = `@${did}${reference}: `;
+    const draft = elements.roomMessage.value.trim();
+    elements.roomMessage.value = draft ? `${prefix}${draft}` : prefix;
+    refreshRoomComposer({ preserveStatus: true });
+    setRoomComposerStatus(
+      'Reply prepared with the full DID. Technocore treats mentions as public room text, not private routing.',
+    );
+    elements.roomMessage.focus();
+  }
+
+  function handleContactAction(event) {
+    const button = event.target.closest?.('[data-contact-action]');
+    if (!button) return;
+    const did = String(button.dataset.did || '');
+    if (!did.startsWith('did:key:')) return;
+    if (button.dataset.contactAction === 'copy-did') {
+      void copyText(did, 'Full sender DID copied.', elements.roomComposeStatus);
+    } else if (button.dataset.contactAction === 'reply') {
+      prepareReply(did, button.dataset.seq);
+    }
+  }
+
   function downloadIdentity() {
     if (!identity) return;
     const blob = new Blob([`seed: ${identity.seed}\ndid: ${identity.did}\n`], { type: 'text/plain' });
@@ -741,6 +767,8 @@ function startApp() {
     elements.roomComposer.requestSubmit();
   });
   elements.roomMessageFilter.addEventListener('change', applyRoomMessageFilter);
+  elements.roomLog.addEventListener('click', handleContactAction);
+  elements.tclkDeals.addEventListener('click', handleContactAction);
 
   renderMarket();
   addAgentMessage('agent', 'Hello. I track the live Binance data in your watchlist. Try “BTC price” or “Top losers”.');

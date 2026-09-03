@@ -9,9 +9,12 @@ The client and VPS use independent identities with Technocore as the message tra
    returns the server-assigned sequence.
 3. The VPS long-polls the same `mb-p-<random>` room. It ignores unsigned/unknown senders, calls
    Binance only for allowlisted User DIDs, and posts a signed Host reply.
-4. The browser long-poll renders every signed writer as a verified DID. It does not pin or label a
-   separate Host identity.
+4. The browser long-poll renders every signed writer as a verified DID. Remote signed messages have
+   **Copy DID** and **Reply** actions; Reply inserts the full DID and source sequence into the public
+   composer. This is a readable convention, not a private message or server-routed mention. The
+   client does not pin or label a separate Host identity.
 5. Signed messages carrying a `tclk1 ` frame are validated and folded into a read-only deal view.
+   Each deal card identifies its offer maker and exposes the same Copy DID and Reply actions.
    PAPER records are fetched through a contract-id-only proxy operation and labelled as rehearsals,
    never as token balances, escrow or mainnet settlement.
 

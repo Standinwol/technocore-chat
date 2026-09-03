@@ -136,6 +136,7 @@ function fakeElement(tagName) {
     tagName,
     children: [],
     className: '',
+    dataset: {},
     append(...children) { this.children.push(...children); },
     appendChild(child) { this.children.push(child); return child; },
     set textContent(value) {
@@ -151,6 +152,10 @@ const container = fakeElement('div');
 renderTclkDeals(container, analysis, new Map([[accept.contract, paperValue]]));
 assert.equal(container.children[0].className, 'tclk-deal');
 assert.equal(container.children[0].children[0].children[1].textContent, 'claimed');
+assert.match(container.children[0].children[2].children[0].textContent, /^Maker /);
+assert.equal(container.children[0].children[2].children[0].title, payer.did);
+assert.equal(container.children[0].children[2].children[1].children[0].dataset.did, payer.did);
+assert.equal(container.children[0].children[2].children[1].children[1].dataset.seq, '1');
 delete globalThis.document;
 
 console.log('client tclk probe: ok');

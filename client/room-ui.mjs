@@ -7,6 +7,21 @@ function shortDid(value) {
   return `${value.slice(8, 14)}…${value.slice(-6)}`;
 }
 
+function contactButton(label, action, did, sequence) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'contact-action';
+  button.textContent = label;
+  button.dataset.contactAction = action;
+  button.dataset.did = did;
+  button.dataset.seq = String(sequence ?? '');
+  button.title = action === 'copy-did'
+    ? `Copy ${did}`
+    : `Reply to ${did} about message #${sequence ?? '?'}`;
+  button.setAttribute?.('aria-label', button.title);
+  return button;
+}
+
 export function populateRoomOptions(select, rooms, selectedRoom = '') {
   select.textContent = '';
   const placeholder = document.createElement('option');
@@ -37,6 +52,8 @@ export function renderRoomMessages(container, messages, { reset = false, userDid
     const meta = document.createElement('div');
     meta.className = 'room-message-meta';
 
+    const authorLine = document.createElement('div');
+    authorLine.className = 'room-author-line';
     const author = document.createElement('code');
     const verified = isVerifiedDid(message.from);
     author.className = verified ? 'room-author verified' : 'room-author unsigned';
@@ -44,10 +61,20 @@ export function renderRoomMessages(container, messages, { reset = false, userDid
       ? `${ownMessage ? 'You · ' : ''}${shortDid(message.from)}`
       : `~${message.from || 'unknown'}`;
     author.title = verified ? message.from : 'Self-asserted nickname';
+    authorLine.appendChild(author);
+    if (verified && !ownMessage) {
+      const actions = document.createElement('span');
+      actions.className = 'contact-actions';
+      actions.append(
+        contactButton('Copy DID', 'copy-did', message.from, message.seq),
+        contactButton('Reply', 'reply', message.from, message.seq),
+      );
+      authorLine.appendChild(actions);
+    }
 
     const sequence = document.createElement('span');
     sequence.textContent = `#${message.seq ?? '?'} · ${message.ts || 'unknown time'}`;
-    meta.append(author, sequence);
+    meta.append(authorLine, sequence);
 
     const body = document.createElement('p');
     body.className = 'room-message-body';
