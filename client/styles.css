@@ -152,6 +152,35 @@ td { height: 86px; padding: 14px 20px; border-top: 1px solid var(--line); font-v
 .room-status-line p { margin: 0; }
 .room-status-line p.error { color: var(--red); }
 .room-status-line span { flex: 0 0 auto; color: var(--cyan); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.tclk-viewer { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: rgba(7, 20, 13, 0.68); padding: 18px 24px; }
+.tclk-viewer-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.tclk-title-row { display: flex; align-items: center; gap: 10px; }
+.tclk-title-row h3 { margin: 0; font-size: 0.95rem; letter-spacing: -0.02em; }
+.tclk-test-badge { border: 1px solid rgba(241, 186, 73, 0.38); border-radius: 999px; color: #f1ba49; background: rgba(241, 186, 73, 0.07); padding: 4px 7px; font-size: 0.58rem; font-weight: 750; letter-spacing: 0.08em; text-transform: uppercase; }
+#tclk-summary { margin: 6px 0 0; color: var(--muted); font-size: 0.72rem; }
+.tclk-filter { width: min(180px, 42vw); color: var(--muted); font-size: 0.68rem; }
+.tclk-filter select { height: 36px; margin-top: 5px; font-size: 0.74rem; }
+.tclk-deals { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 10px; margin-top: 14px; }
+.tclk-deal { min-width: 0; border: 1px solid var(--line); border-radius: 13px; background: rgba(3, 11, 7, 0.72); padding: 12px; }
+.tclk-deal-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.tclk-deal-heading strong { display: block; font-size: 0.84rem; }
+.tclk-reference { display: block; margin-top: 4px; overflow: hidden; color: var(--cyan); text-overflow: ellipsis; font-size: 0.65rem; }
+.tclk-status { flex: 0 0 auto; border: 1px solid var(--line-strong); border-radius: 999px; color: var(--muted); padding: 4px 7px; font-size: 0.58rem; font-weight: 750; text-transform: uppercase; }
+.tclk-status.claimed, .tclk-status.refunded, .tclk-status.cancelled { color: var(--accent); border-color: rgba(184, 243, 74, 0.35); }
+.tclk-status.expired { color: #f1ba49; border-color: rgba(241, 186, 73, 0.38); }
+.tclk-facts { display: flex; flex-wrap: wrap; gap: 5px 10px; margin-top: 10px; color: #81948a; font-size: 0.64rem; }
+.tclk-paper.verified { color: var(--accent); }
+.tclk-paper.pending { color: #f1ba49; }
+.tclk-paper.missing, .tclk-paper.invalid, .tclk-paper.mismatch, .tclk-paper.unavailable { color: var(--red); }
+.tclk-timeline { display: flex; flex-wrap: wrap; gap: 6px; margin: 11px 0 0; padding: 0; list-style: none; }
+.tclk-timeline li { display: flex; gap: 5px; border: 1px solid rgba(184, 243, 74, 0.2); border-radius: 8px; color: #9eb0a6; padding: 5px 7px; font-size: 0.62rem; }
+.tclk-timeline li.rejected { border-color: rgba(255, 103, 103, 0.35); color: var(--red); text-decoration: line-through; }
+.tclk-step { color: var(--text); font-weight: 700; }
+.tclk-warning { margin: 9px 0 0; color: var(--red); overflow-wrap: anywhere; font-size: 0.62rem; line-height: 1.45; }
+.tclk-empty { grid-column: 1 / -1; margin: 0; color: #71847a; font-size: 0.72rem; }
+.tclk-issues { grid-column: 1 / -1; margin: 0; color: var(--red); overflow-wrap: anywhere; padding-left: 18px; font-size: 0.65rem; line-height: 1.55; }
+.tclk-disclaimer { margin: 12px 0 0; color: #71847a; font-size: 0.65rem; line-height: 1.45; }
+.room-message[hidden] { display: none !important; }
 .room-log { display: flex; min-height: 260px; max-height: 520px; flex-direction: column; gap: 10px; overflow-y: auto; padding: 22px 24px; }
 .room-message { width: min(86%, 760px); border: 1px solid var(--line); border-radius: 5px 15px 15px 15px; background: rgba(4, 13, 8, 0.56); padding: 12px 14px; }
 .room-message.own { align-self: flex-end; border-color: rgba(184, 243, 74, 0.28); border-radius: 15px 5px 15px 15px; background: rgba(184, 243, 74, 0.08); }
@@ -185,6 +214,8 @@ td { height: 86px; padding: 14px 20px; border-top: 1px solid var(--line); font-v
   .agent-layout { grid-template-columns: 1fr; }
   .agent-controls { border-right: 0; border-bottom: 1px solid var(--line); }
   .room-controls { grid-template-columns: 1fr; }
+  .tclk-viewer-heading { flex-direction: column; }
+  .tclk-filter { width: 100%; }
 }
 
 @media (max-width: 560px) {

@@ -44,9 +44,14 @@ jobs:
 
       - name: Client syntax and crypto contract
         run: |
+          npm ci
+          npm run build:client-tclk
+          git diff --exit-code -- client/tclk-viewer.mjs
           node --check client/app.mjs
+          node --check client/tclk-viewer.mjs
           node tests/client_crypto_probe.mjs
           node tests/client_technocore_probe.mjs
+          node tests/client_tclk_probe.mjs
           node tests/client_security_probe.mjs
 
       - name: Lint

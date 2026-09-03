@@ -27,6 +27,7 @@ const browserSources = [
   source('../client/market.mjs'),
   source('../client/room-ui.mjs'),
   source('../client/technocore.mjs'),
+  source('../client/tclk-viewer.mjs'),
 ].join('\n');
 assert.doesNotMatch(
   browserSources,

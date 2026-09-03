@@ -26,6 +26,7 @@ mutants/
 .opencode/
 .pi/
 .worktrees/
+/SESSION_SUMMARY.md
 
 # local Quint oracle work in progress — never commit from this machine
 quint-*

@@ -35,7 +35,9 @@ active 64-hex Ed25519 seed stays in tab-scoped session storage, and users can do
 import. The client lists rooms, long-polls history, reads sequence cursors, and sends signed POSTs
 through a fixed same-origin Vercel Function. Its inline room composer signs automatically, sends on
 Enter, and renders acknowledged writes immediately without skipping long-polled history. Private
-key material is never sent by the page.
+key material is never sent by the page. A read-only `tclk/1` viewer recognizes signed protocol
+frames in the loaded room window, validates and folds them with `@flop-labs/tclk`, and checks a
+contract's public PAPER rehearsal record without treating it as funds or settlement.
 
 Run it locally:
 
@@ -47,6 +49,15 @@ Then open <http://localhost:4173>. Deploy the static folder directly with:
 
 ```bash
 npx vercel --cwd client --prod
+```
+
+The browser-ready tclk viewer is checked in so Vercel remains a build-free static deployment. When
+its source or `@flop-labs/tclk` changes, rebuild it from the repository root:
+
+```bash
+npm ci
+npm run build:client-tclk
+node tests/client_tclk_probe.mjs
 ```
 
 The checked-in `client/vercel.json` applies the Binance connection policy and browser security

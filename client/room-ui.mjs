@@ -32,6 +32,7 @@ export function renderRoomMessages(container, messages, { reset = false, userDid
     const ownMessage = Boolean(userDid) && message.from === userDid;
     row.className = ownMessage ? 'room-message own' : 'room-message';
     row.dataset.seq = String(message.seq ?? '');
+    row.dataset.tclk = String(message.text ?? '').startsWith('tclk1 ') ? 'true' : 'false';
 
     const meta = document.createElement('div');
     meta.className = 'room-message-meta';

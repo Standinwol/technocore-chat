@@ -2,6 +2,7 @@ import { encodeBase64url } from './identity.mjs';
 
 export const ROOM_RE = /^[a-z0-9][a-z0-9_-]{0,47}$/;
 export const NONCE_STORAGE_KEY = 'signal-id-technocore-nonces-v1';
+const TCLK_CONTRACT_RE = /^0x[0-9a-f]{64}$/;
 const INVISIBLE = /[\p{Cc}\p{Cf}\p{Cs}\p{Co}\p{Zl}\p{Zp}]/gu;
 const MAX_SAVED_NONCES = 128;
 
@@ -173,6 +174,12 @@ export function readTechnocoreRoom(room, options = {}) {
   const since = boundedInteger(options.since, null, 0, Number.MAX_SAFE_INTEGER);
   const wait = Math.min(10, Math.max(0, Number(options.wait) || 0));
   return proxyJson('room', { room: normalized, limit, since, wait }, options);
+}
+
+export function readTclkPaperRecord(contract, options = {}) {
+  const normalized = String(contract || '').trim().toLowerCase();
+  if (!TCLK_CONTRACT_RE.test(normalized)) throw new Error('Enter a valid tclk contract id.');
+  return proxyJson('paper', { contract: normalized }, options);
 }
 
 export function postSignedTechnocoreMessage(signed, options = {}) {

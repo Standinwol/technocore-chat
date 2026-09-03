@@ -80,6 +80,9 @@ for (const id of ['agent-log', 'agent-form', 'agent-question', 'report-interval'
   'room-log', 'room-composer', 'room-message', 'send-room-message', 'download-seed']) {
   assert.ok(ids.includes(id), `missing #${id}`);
 }
+for (const id of ['tclk-summary', 'tclk-deals', 'room-message-filter']) {
+  assert.ok(ids.includes(id), `missing #${id}`);
+}
 for (const removedId of ['technocore-message', 'sign-technocore', 'post-technocore', 'signed-url']) {
   assert.ok(!ids.includes(removedId), `obsolete #${removedId} should not remain`);
 }

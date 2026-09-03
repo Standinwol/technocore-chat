@@ -3,10 +3,11 @@ const ROOM_RE = /^[a-z0-9][a-z0-9_-]{0,47}$/;
 const DID_RE = /^did:key:z6Mk[1-9A-HJ-NP-Za-km-z]{44}$/;
 const SIG_RE = /^[A-Za-z0-9_-]{86}$/;
 const NONCE_RE = /^[0-9]{1,19}$/;
+const TCLK_CONTRACT_RE = /^0x[0-9a-f]{64}$/;
 const MAX_BODY = 64 << 10;
 
-function jsonError(message, status) {
-  return new Response(JSON.stringify({ error: message }) + '\n', {
+function jsonResponse(value, status = 200) {
+  return new Response(JSON.stringify(value) + '\n', {
     status,
     headers: {
       'Cache-Control': 'no-store',
@@ -14,6 +15,10 @@ function jsonError(message, status) {
       'X-Content-Type-Options': 'nosniff',
     },
   });
+}
+
+function jsonError(message, status) {
+  return jsonResponse({ error: message }, status);
 }
 
 function integer(value, fallback, minimum, maximum) {
@@ -99,6 +104,27 @@ export async function handleTechnocoreProxy(
         { headers: { Accept: 'application/json' } },
         fetchApi,
       );
+    }
+
+    if (request.method === 'GET' && operation === 'paper') {
+      const contract = String(url.searchParams.get('contract') || '').trim().toLowerCase();
+      if (!TCLK_CONTRACT_RE.test(contract)) {
+        return jsonError('Invalid tclk contract id.', 400);
+      }
+      const namespace = `tclk-paper-${contract.slice(2, 4)}`;
+      const key = contract.slice(4, 18);
+      const response = await fetchApi(
+        `${upstream}/kv/${namespace}/${key}`,
+        { cache: 'no-store', headers: { Accept: 'text/plain' } },
+      );
+      if (response.status === 404) return jsonResponse({ contract, value: null });
+      if (!response.ok) {
+        const detail = (await response.text()).trim().slice(0, 240);
+        return jsonError(detail || `Technocore returned HTTP ${response.status}.`, response.status);
+      }
+      const text = await response.text();
+      const value = text.split('\n').find((line) => line.startsWith('tclkpaper1 ')) || null;
+      return jsonResponse({ contract, value });
     }
 
     if (request.method === 'POST' && operation === 'post') {

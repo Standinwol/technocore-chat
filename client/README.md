@@ -11,6 +11,9 @@ The client and VPS use independent identities with Technocore as the message tra
    Binance only for allowlisted User DIDs, and posts a signed Host reply.
 4. The browser long-poll renders every signed writer as a verified DID. It does not pin or label a
    separate Host identity.
+5. Signed messages carrying a `tclk1 ` frame are validated and folded into a read-only deal view.
+   PAPER records are fetched through a contract-id-only proxy operation and labelled as rehearsals,
+   never as token balances, escrow or mainnet settlement.
 
 No DID registry or application database is required. Technocore stores the full signed writer DID
 in each JSON message, while SQLite on the VPS stores agent cursors/nonces/outbox state.
@@ -47,10 +50,16 @@ for the full room/Host workflow. Before deploying, run the checked-in contracts:
 
 ```bash
 node --check client/app.mjs
+node --check client/tclk-viewer.mjs
 node tests/client_crypto_probe.mjs
 node tests/client_technocore_probe.mjs
+node tests/client_tclk_probe.mjs
 node tests/client_security_probe.mjs
 ```
+
+The deployed `client/tclk-viewer.mjs` is generated from `tools/tclk-viewer-entry.mjs`. Rebuild it
+from the repository root with `npm ci && npm run build:client-tclk`; the checked-in bundle keeps the
+Vercel project on its existing build-free static deployment.
 
 `client/vercel.json` applies the CSP and related browser security headers. The browser talks to
 Binance directly for its live watchlist, but all Technocore reads/writes use the same-origin proxy

@@ -1,0 +1,15 @@
+{
+  "name": "technocore-chat-workspace",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:client-tclk": "node tools/build-tclk-client.mjs",
+    "test:client-tclk": "node tests/client_tclk_probe.mjs"
+  },
+  "dependencies": {
+    "@flop-labs/tclk": "0.1.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}

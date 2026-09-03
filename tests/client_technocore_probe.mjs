@@ -11,6 +11,7 @@ import {
   normalizeRoom,
   postSignedTechnocoreMessage,
   readTechnocoreRoom,
+  readTclkPaperRecord,
   saveTechnocoreNonce,
 } from '../client/technocore.mjs';
 
@@ -87,6 +88,18 @@ const posted = await postSignedTechnocoreMessage(signed, {
 });
 assert.equal(posted.posted.seq, 9);
 
+const paperContract = `0x${'ab'.repeat(32)}`;
+const paperClient = await readTclkPaperRecord(paperContract, {
+  fetchApi: async (url) => {
+    const requestUrl = new URL(url);
+    assert.equal(requestUrl.searchParams.get('op'), 'paper');
+    assert.equal(requestUrl.searchParams.get('contract'), paperContract);
+    return new Response(JSON.stringify({ contract: paperContract, value: null }));
+  },
+});
+assert.equal(paperClient.value, null);
+assert.throws(() => readTclkPaperRecord('not-a-contract'), /valid tclk contract/);
+
 await assert.rejects(
   readTechnocoreRoom('technocore', {
     fetchApi: async () => new Response('slow down', {
@@ -141,6 +154,26 @@ assert.deepEqual(JSON.parse(upstreamRequests[1].init.body), {
   nonce: signed.nonce,
   text: signed.text,
 });
+
+const paperValue = `tclkpaper1 locked hash 0x${'11'.repeat(32)} 2000000000000`;
+const proxiedPaper = await handleTechnocoreProxy(
+  new Request(`https://signal.test/api/technocore?op=paper&contract=${paperContract}`),
+  async (url) => {
+    const upstreamUrl = new URL(url);
+    assert.equal(upstreamUrl.pathname, `/kv/tclk-paper-ab/${'ab'.repeat(7)}`);
+    return new Response(`warning\n${paperValue}\n`);
+  },
+  'https://chat.example',
+);
+assert.equal(proxiedPaper.status, 200);
+assert.deepEqual(await proxiedPaper.json(), { contract: paperContract, value: paperValue });
+
+const missingPaper = await handleTechnocoreProxy(
+  new Request(`https://signal.test/api/technocore?op=paper&contract=${paperContract}`),
+  async () => new Response('missing', { status: 404 }),
+  'https://chat.example',
+);
+assert.deepEqual(await missingPaper.json(), { contract: paperContract, value: null });
 
 const rejectedRoom = await handleTechnocoreProxy(
   new Request('https://signal.test/api/technocore?op=room&room=../../secret'),
@@ -197,7 +230,15 @@ renderRoomMessages(roomContainer, [{
   ts: 'now',
 }], { userDid: nonceDid });
 assert.equal(roomContainer.children[0].className, 'room-message own');
+assert.equal(roomContainer.children[0].dataset.tclk, 'false');
 assert.match(roomContainer.children[0].children[0].children[0].textContent, /^You · /);
+renderRoomMessages(roomContainer, [{
+  seq: 10,
+  from: nonceDid,
+  text: 'tclk1 {"type":"test"}',
+  ts: 'now',
+}], { userDid: nonceDid });
+assert.equal(roomContainer.children[1].dataset.tclk, 'true');
 delete globalThis.document;
 
 console.log('client technocore probe: ok');

@@ -190,6 +190,29 @@
           <p id="room-status" aria-live="polite">Connect to read room history and wait for new messages.</p>
           <span id="room-cursor">Sequence —</span>
         </div>
+
+        <section class="tclk-viewer" aria-labelledby="tclk-title">
+          <div class="tclk-viewer-heading">
+            <div>
+              <div class="tclk-title-row">
+                <h3 id="tclk-title">tclk/1 deal viewer</h3>
+                <span class="tclk-test-badge">Test only</span>
+              </div>
+              <p id="tclk-summary" aria-live="polite">No tclk/1 frames in the loaded room history.</p>
+            </div>
+            <label class="tclk-filter" for="room-message-filter">
+              Room messages
+              <select id="room-message-filter">
+                <option value="all">All messages</option>
+                <option value="tclk">tclk/1 only</option>
+              </select>
+            </label>
+          </div>
+          <div id="tclk-deals" class="tclk-deals" aria-live="polite"></div>
+          <p class="tclk-disclaimer">Read-only protocol inspection. PAPER records are rehearsals
+            and do not represent tokens, escrowed funds or mainnet settlement.</p>
+        </section>
+
         <div id="room-log" class="room-log" role="log" aria-live="polite"
              aria-label="Technocore room messages"></div>
 

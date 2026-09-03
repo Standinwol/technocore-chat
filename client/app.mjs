@@ -24,10 +24,17 @@ import {
   normalizeRoom,
   postSignedTechnocoreMessage,
   readTechnocoreRoom,
+  readTclkPaperRecord,
   saveTechnocoreNonce,
   signTechnocoreMessage,
 } from './technocore.mjs';
 import { populateRoomOptions, renderRoomMessages } from './room-ui.mjs';
+import {
+  analyzeTclkMessages,
+  renderTclkDeals,
+  TCLK_OFFER_ROOM,
+  tclkSummaryText,
+} from './tclk-viewer.mjs';
 
 const TECHNOCORE_ORIGIN = 'https://technocore.chat';
 
@@ -55,6 +62,7 @@ export {
   normalizeRoom,
   postSignedTechnocoreMessage,
   readTechnocoreRoom,
+  readTclkPaperRecord,
   signTechnocoreMessage,
 } from './technocore.mjs';
 
@@ -82,6 +90,9 @@ function startApp() {
     roomComposer: document.getElementById('room-composer'),
     roomMessage: document.getElementById('room-message'),
     roomComposeStatus: document.getElementById('room-compose-status'),
+    roomMessageFilter: document.getElementById('room-message-filter'),
+    tclkSummary: document.getElementById('tclk-summary'),
+    tclkDeals: document.getElementById('tclk-deals'),
   };
   const buttons = {
     copyDid: document.getElementById('copy-did'),
@@ -106,7 +117,11 @@ function startApp() {
   let activeRoom = '';
   let roomCursor = 0;
   let roomPosting = false;
+  let roomTranscript = [];
+  let tclkAnalysis = analyzeTclkMessages([]);
   const renderedRoomSequences = new Set();
+  const tclkPaperRecords = new Map();
+  const tclkPaperReads = new Map();
 
   function loadWatchlist() {
     try {
@@ -313,10 +328,51 @@ function startApp() {
     elements.roomLog.appendChild(empty);
   }
 
+  function applyRoomMessageFilter() {
+    const onlyTclk = elements.roomMessageFilter.value === 'tclk';
+    for (const message of elements.roomLog.querySelectorAll('.room-message')) {
+      message.hidden = onlyTclk && message.dataset.tclk !== 'true';
+    }
+  }
+
+  async function refreshPaperRecords(analysis, room) {
+    const now = Date.now();
+    const targets = analysis.deals.filter((deal) => (
+      deal.contract && deal.state.rail === 'paper'
+    ));
+    await Promise.all(targets.map(async (deal) => {
+      const fingerprint = `${deal.status}|${deal.latestSeq}`;
+      const previous = tclkPaperReads.get(deal.contract);
+      if (previous?.fingerprint === fingerprint && now - previous.at < 30_000) return;
+      tclkPaperReads.set(deal.contract, { fingerprint, at: now });
+      try {
+        const result = await readTclkPaperRecord(deal.contract);
+        tclkPaperRecords.set(deal.contract, result?.value ?? null);
+      } catch (_) {
+        tclkPaperRecords.set(deal.contract, { unavailable: true });
+      }
+    }));
+    if (activeRoom === room && tclkAnalysis === analysis) {
+      renderTclkDeals(elements.tclkDeals, analysis, tclkPaperRecords);
+    }
+  }
+
+  function updateTclkViewer() {
+    tclkAnalysis = analyzeTclkMessages(roomTranscript);
+    elements.tclkSummary.textContent = tclkSummaryText(tclkAnalysis);
+    renderTclkDeals(elements.tclkDeals, tclkAnalysis, tclkPaperRecords);
+    if (activeRoom) void refreshPaperRecords(tclkAnalysis, activeRoom);
+  }
+
   function applyRoomView(view, { reset = false, advanceCursor = true } = {}) {
     const messages = Array.isArray(view?.messages) ? view.messages : [];
     const previous = roomCursor;
-    if (reset) renderedRoomSequences.clear();
+    if (reset) {
+      renderedRoomSequences.clear();
+      roomTranscript = [];
+      tclkPaperRecords.clear();
+      tclkPaperReads.clear();
+    }
     const freshMessages = messages.filter((message) => {
       const sequence = Number(message?.seq);
       if (!Number.isInteger(sequence) || sequence < 1) return true;
@@ -331,7 +387,10 @@ function startApp() {
         reset,
         userDid: identity?.did || '',
       });
+      applyRoomMessageFilter();
     }
+    if (freshMessages.length) roomTranscript.push(...freshMessages);
+    if (reset || freshMessages.length) updateTclkViewer();
     if (advanceCursor && previous && messages.length && Number(messages[0].seq) > previous + 1) {
       setRoomState(
         'Connected',
@@ -392,12 +451,20 @@ function startApp() {
     activeRoom = room;
     roomCursor = 0;
     renderedRoomSequences.clear();
+    roomTranscript = [];
+    tclkPaperRecords.clear();
+    tclkPaperReads.clear();
+    updateTclkViewer();
     elements.roomCursor.textContent = 'Sequence —';
     elements.chatRoom.value = room;
     refreshRoomComposer();
     setRoomState('Connecting', `Loading /r/${room} history…`);
     try {
-      const view = await readTechnocoreRoom(room, { limit: 50, signal: controller.signal });
+      const historyLimit = room === TCLK_OFFER_ROOM ? 200 : 50;
+      const view = await readTechnocoreRoom(room, {
+        limit: historyLimit,
+        signal: controller.signal,
+      });
       if (controller.signal.aborted || activeRoom !== room) return;
       applyRoomView(view, { reset: true });
       setRoomState('Connected', `Waiting for new messages in /r/${room}.`, { active: true });
@@ -673,10 +740,12 @@ function startApp() {
     event.preventDefault();
     elements.roomComposer.requestSubmit();
   });
+  elements.roomMessageFilter.addEventListener('change', applyRoomMessageFilter);
 
   renderMarket();
   addAgentMessage('agent', 'Hello. I track the live Binance data in your watchlist. Try “BTC price” or “Top losers”.');
   refreshRoomComposer();
+  updateTclkViewer();
   const savedSeed = loadIdentitySeed(localStorage, sessionStorage);
   if (savedSeed) {
     elements.identityMessage.textContent = 'Restoring saved DID…';
