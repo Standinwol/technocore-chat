@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
 import { handleTechnocoreProxy } from '../client/api/technocore.mjs';
 import { renderRoomMessages } from '../client/room-ui.mjs';
 import {
+  claimTclkPaperRecord,
   TechnocoreHttpError,
   listTechnocoreRooms,
   loadTechnocoreNonce,
@@ -13,6 +15,7 @@ import {
   readTechnocoreRoom,
   readTclkPaperRecord,
   saveTechnocoreNonce,
+  writeTclkPaperLock,
 } from '../client/technocore.mjs';
 
 assert.equal(normalizeRoom('  Technocore  '), 'technocore');
@@ -100,6 +103,34 @@ const paperClient = await readTclkPaperRecord(paperContract, {
 assert.equal(paperClient.value, null);
 assert.throws(() => readTclkPaperRecord('not-a-contract'), /valid tclk contract/);
 
+const paperDeadline = Date.now() + 60 * 60_000;
+const clientStatement = `0x${'11'.repeat(32)}`;
+await writeTclkPaperLock(paperContract, clientStatement, paperDeadline, {
+  fetchApi: async (url, init) => {
+    const requestUrl = new URL(url);
+    assert.equal(requestUrl.searchParams.get('op'), 'paper-lock');
+    assert.equal(init.method, 'POST');
+    assert.deepEqual(JSON.parse(init.body), {
+      contract: paperContract,
+      statement: clientStatement,
+      refundAfterMs: paperDeadline,
+    });
+    return new Response(JSON.stringify({ contract: paperContract, value: 'locked' }));
+  },
+});
+await claimTclkPaperRecord(paperContract, `0x${'22'.repeat(32)}`, {
+  fetchApi: async (url, init) => {
+    const requestUrl = new URL(url);
+    assert.equal(requestUrl.searchParams.get('op'), 'paper-claim');
+    assert.equal(init.method, 'POST');
+    assert.deepEqual(JSON.parse(init.body), {
+      contract: paperContract,
+      secret: `0x${'22'.repeat(32)}`,
+    });
+    return new Response(JSON.stringify({ contract: paperContract, value: 'claimed' }));
+  },
+});
+
 await assert.rejects(
   readTechnocoreRoom('technocore', {
     fetchApi: async () => new Response('slow down', {
@@ -174,6 +205,84 @@ const missingPaper = await handleTechnocoreProxy(
   'https://chat.example',
 );
 assert.deepEqual(await missingPaper.json(), { contract: paperContract, value: null });
+
+const paperSecret = `0x${'ab'.repeat(32)}`;
+const paperStatement = `0x${createHash('sha256').update(Buffer.from(paperSecret.slice(2), 'hex')).digest('hex')}`;
+const paperRefundAfter = Date.now() + 30 * 60_000;
+let storedPaper = null;
+let paperWrites = 0;
+const paperUpstream = async (url, init = {}) => {
+  const upstreamUrl = new URL(url);
+  assert.equal(upstreamUrl.pathname, `/kv/tclk-paper-ab/${'ab'.repeat(7)}`);
+  if (init.method !== 'POST') {
+    return storedPaper === null
+      ? new Response('missing', { status: 404 })
+      : new Response(`untrusted banner\n${storedPaper}\n`);
+  }
+  const payload = JSON.parse(init.body);
+  if (payload.if_absent === true) {
+    if (storedPaper !== null) return new Response(storedPaper, { status: 409 });
+  } else if (payload.if !== storedPaper) {
+    return new Response(storedPaper || 'missing', { status: 409 });
+  }
+  storedPaper = payload.value;
+  paperWrites += 1;
+  return new Response('stored');
+};
+
+const paperLockRequest = () => new Request('https://signal.test/api/technocore?op=paper-lock', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    contract: paperContract,
+    statement: paperStatement,
+    refundAfterMs: paperRefundAfter,
+  }),
+});
+const lockedPaper = await handleTechnocoreProxy(
+  paperLockRequest(), paperUpstream, 'https://chat.example',
+);
+assert.equal(lockedPaper.status, 200);
+assert.equal((await lockedPaper.json()).idempotent, false);
+assert.equal(storedPaper, `tclkpaper1 locked hash ${paperStatement} ${paperRefundAfter}`);
+const repeatedLock = await handleTechnocoreProxy(
+  paperLockRequest(), paperUpstream, 'https://chat.example',
+);
+assert.equal((await repeatedLock.json()).idempotent, true);
+assert.equal(paperWrites, 1);
+
+const wrongClaim = await handleTechnocoreProxy(
+  new Request('https://signal.test/api/technocore?op=paper-claim', {
+    method: 'POST',
+    body: JSON.stringify({ contract: paperContract, secret: `0x${'cd'.repeat(32)}` }),
+  }),
+  paperUpstream,
+  'https://chat.example',
+);
+assert.equal(wrongClaim.status, 400);
+assert.match((await wrongClaim.json()).error, /does not open/);
+
+const claimedPaper = await handleTechnocoreProxy(
+  new Request('https://signal.test/api/technocore?op=paper-claim', {
+    method: 'POST',
+    body: JSON.stringify({ contract: paperContract, secret: paperSecret }),
+  }),
+  paperUpstream,
+  'https://chat.example',
+);
+assert.equal(claimedPaper.status, 200);
+assert.equal((await claimedPaper.json()).idempotent, false);
+assert.equal(storedPaper, `tclkpaper1 claimed hash ${paperStatement} ${paperRefundAfter} ${paperSecret}`);
+const repeatedClaim = await handleTechnocoreProxy(
+  new Request('https://signal.test/api/technocore?op=paper-claim', {
+    method: 'POST',
+    body: JSON.stringify({ contract: paperContract, secret: paperSecret }),
+  }),
+  paperUpstream,
+  'https://chat.example',
+);
+assert.equal((await repeatedClaim.json()).idempotent, true);
+assert.equal(paperWrites, 2);
 
 const rejectedRoom = await handleTechnocoreProxy(
   new Request('https://signal.test/api/technocore?op=room&room=../../secret'),

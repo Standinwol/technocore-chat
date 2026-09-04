@@ -11,6 +11,12 @@ import { createIdentity } from '../client/identity.mjs';
 import {
   analyzeTclkMessages,
   checkPaperRecord,
+  encodeTclkFrame,
+  makePaperDemoAccept,
+  makePaperDemoLock,
+  makePaperDemoOffer,
+  makePaperDemoReceipt,
+  makePaperDemoReveal,
   renderTclkDeals,
   TCLK_OFFER_ROOM,
   tclkSummaryText,
@@ -21,6 +27,25 @@ assert.equal(TCLK_OFFER_ROOM, 'tclk-offers');
 const payer = await createIdentity('11'.repeat(32), webcrypto);
 const payee = await createIdentity('22'.repeat(32), webcrypto);
 const now = 2_000_000_000_000;
+const demoOffer = makePaperDemoOffer(payer.did, '1000000', now);
+const demoAcceptResult = makePaperDemoAccept(demoOffer, payee.did);
+const demoLock = makePaperDemoLock(demoAcceptResult.accept, payer.did);
+const demoReveal = makePaperDemoReveal(
+  demoAcceptResult.accept, payee.did, demoAcceptResult.secret,
+);
+const demoReceipt = makePaperDemoReceipt(demoAcceptResult.accept, payer.did);
+assert.equal(demoOffer.asset, 'PAPER');
+assert.deepEqual(demoOffer.rails, ['paper']);
+assert.equal(demoOffer.expiresMs, now + 10 * 60_000);
+assert.equal(demoOffer.claimByMs, now + 45 * 60_000);
+assert.equal(demoOffer.refundAfterMs, now + 60 * 60_000);
+assert.equal(demoLock.ref, demoAcceptResult.accept.contract);
+assert.equal(demoReveal.secret, demoAcceptResult.secret);
+assert.equal(demoReceipt.outcome, 'claimed');
+for (const frame of [demoOffer, demoAcceptResult.accept, demoLock, demoReveal, demoReceipt]) {
+  assert.match(encodeTclkFrame(frame), /^tclk1 /);
+}
+
 const offer = makeOffer({
   from: payer.did,
   role: 'payer',

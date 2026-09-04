@@ -4,7 +4,16 @@ const DID_RE = /^did:key:z6Mk[1-9A-HJ-NP-Za-km-z]{44}$/;
 const SIG_RE = /^[A-Za-z0-9_-]{86}$/;
 const NONCE_RE = /^[0-9]{1,19}$/;
 const TCLK_CONTRACT_RE = /^0x[0-9a-f]{64}$/;
+const HASH_RE = /^0x[0-9a-f]{64}$/;
+const MAX_PAPER_WINDOW_MS = 24 * 60 * 60 * 1000;
 const MAX_BODY = 64 << 10;
+
+class ProxyProblem extends Error {
+  constructor(message, status) {
+    super(message);
+    this.status = status;
+  }
+}
 
 function jsonResponse(value, status = 200) {
   return new Response(JSON.stringify(value) + '\n', {
@@ -64,6 +73,83 @@ async function forward(upstream, init, fetchApi) {
   return new Response(body, { status: response.status, headers });
 }
 
+async function jsonObject(request) {
+  const declared = Number(request.headers.get('content-length')) || 0;
+  if (declared > MAX_BODY) throw new ProxyProblem('Request body is too large.', 413);
+  const raw = await request.text();
+  if (new TextEncoder().encode(raw).length > MAX_BODY) {
+    throw new ProxyProblem('Request body is too large.', 413);
+  }
+  let payload;
+  try {
+    payload = JSON.parse(raw || '{}');
+  } catch (_) {
+    throw new ProxyProblem('Request body must be JSON.', 400);
+  }
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new ProxyProblem('Request body must be a JSON object.', 400);
+  }
+  return payload;
+}
+
+function paperLocation(contract) {
+  return {
+    namespace: `tclk-paper-${contract.slice(2, 4)}`,
+    key: contract.slice(4, 18),
+  };
+}
+
+function paperLine(text) {
+  return String(text).split('\n').find((line) => line.startsWith('tclkpaper1 ')) || null;
+}
+
+async function readPaper(upstream, contract, fetchApi) {
+  const { namespace, key } = paperLocation(contract);
+  const response = await fetchApi(
+    `${upstream}/kv/${namespace}/${key}`,
+    { cache: 'no-store', headers: { Accept: 'text/plain' } },
+  );
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    const detail = (await response.text()).trim().slice(0, 240);
+    throw new ProxyProblem(detail || `Technocore returned HTTP ${response.status}.`, response.status);
+  }
+  return paperLine(await response.text());
+}
+
+async function setPaper(upstream, contract, value, condition, fetchApi) {
+  const { namespace, key } = paperLocation(contract);
+  const response = await fetchApi(`${upstream}/kv/${namespace}/${key}`, {
+    cache: 'no-store',
+    method: 'POST',
+    headers: { Accept: 'text/plain', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ value, ...condition }),
+  });
+  if (response.ok) return true;
+  if (response.status === 409) return false;
+  const detail = (await response.text()).trim().slice(0, 240);
+  throw new ProxyProblem(detail || `Technocore returned HTTP ${response.status}.`, response.status);
+}
+
+function parseHashPaper(value) {
+  const match = /^tclkpaper1 (locked|claimed) hash (0x[0-9a-f]{64}) ([1-9][0-9]*)(?: (0x[0-9a-f]{64}))?$/.exec(value || '');
+  if (!match || (match[1] === 'claimed') !== Boolean(match[4])) return null;
+  const refundAfterMs = Number(match[3]);
+  if (!Number.isSafeInteger(refundAfterMs)) return null;
+  return {
+    status: match[1],
+    statement: match[2],
+    refundAfterMs,
+    ...(match[4] ? { secret: match[4] } : {}),
+  };
+}
+
+async function hashPreimage(secret) {
+  const bytes = new Uint8Array(secret.slice(2).match(/../g).map((byte) => Number.parseInt(byte, 16)));
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes);
+  return `0x${[...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('')}`;
+}
+
 export async function handleTechnocoreProxy(
   request,
   fetchApi = globalThis.fetch,
@@ -111,40 +197,66 @@ export async function handleTechnocoreProxy(
       if (!TCLK_CONTRACT_RE.test(contract)) {
         return jsonError('Invalid tclk contract id.', 400);
       }
-      const namespace = `tclk-paper-${contract.slice(2, 4)}`;
-      const key = contract.slice(4, 18);
-      const response = await fetchApi(
-        `${upstream}/kv/${namespace}/${key}`,
-        { cache: 'no-store', headers: { Accept: 'text/plain' } },
-      );
-      if (response.status === 404) return jsonResponse({ contract, value: null });
-      if (!response.ok) {
-        const detail = (await response.text()).trim().slice(0, 240);
-        return jsonError(detail || `Technocore returned HTTP ${response.status}.`, response.status);
+      return jsonResponse({ contract, value: await readPaper(upstream, contract, fetchApi) });
+    }
+
+    if (request.method === 'POST' && operation === 'paper-lock') {
+      const payload = await jsonObject(request);
+      const contract = String(payload.contract || '').trim().toLowerCase();
+      const statement = String(payload.statement || '').trim().toLowerCase();
+      const refundAfterMs = Number(payload.refundAfterMs);
+      const now = Date.now();
+      if (!TCLK_CONTRACT_RE.test(contract)
+          || !HASH_RE.test(statement)
+          || !Number.isSafeInteger(refundAfterMs)
+          || refundAfterMs <= now
+          || refundAfterMs > now + MAX_PAPER_WINDOW_MS) {
+        return jsonError('A valid, near-term tclk PAPER lock is required.', 400);
       }
-      const text = await response.text();
-      const value = text.split('\n').find((line) => line.startsWith('tclkpaper1 ')) || null;
-      return jsonResponse({ contract, value });
+      const value = `tclkpaper1 locked hash ${statement} ${refundAfterMs}`;
+      const current = await readPaper(upstream, contract, fetchApi);
+      if (current === value) return jsonResponse({ contract, value, idempotent: true });
+      if (current !== null) return jsonError('This PAPER contract already has a different record.', 409);
+      const won = await setPaper(upstream, contract, value, { if_absent: true }, fetchApi);
+      if (won) return jsonResponse({ contract, value, idempotent: false });
+      const raced = await readPaper(upstream, contract, fetchApi);
+      if (raced === value) return jsonResponse({ contract, value, idempotent: true });
+      return jsonError('This PAPER contract changed before it could be locked.', 409);
+    }
+
+    if (request.method === 'POST' && operation === 'paper-claim') {
+      const payload = await jsonObject(request);
+      const contract = String(payload.contract || '').trim().toLowerCase();
+      const secret = String(payload.secret || '').trim().toLowerCase();
+      if (!TCLK_CONTRACT_RE.test(contract) || !HASH_RE.test(secret)) {
+        return jsonError('A valid tclk PAPER contract and hash preimage are required.', 400);
+      }
+      const current = await readPaper(upstream, contract, fetchApi);
+      const record = parseHashPaper(current);
+      if (!record) return jsonError('The PAPER lock is missing or unreadable.', 409);
+      const value = `tclkpaper1 claimed hash ${record.statement} ${record.refundAfterMs} ${secret}`;
+      if (record.status === 'claimed') {
+        return current === value
+          ? jsonResponse({ contract, value, idempotent: true })
+          : jsonError('This PAPER contract was already claimed differently.', 409);
+      }
+      if (Date.now() >= record.refundAfterMs) {
+        return jsonError('The PAPER refund window is already open.', 409);
+      }
+      if (await hashPreimage(secret) !== record.statement) {
+        return jsonError('The preimage does not open this PAPER hash lock.', 400);
+      }
+      const won = await setPaper(upstream, contract, value, { if: current }, fetchApi);
+      if (won) return jsonResponse({ contract, value, idempotent: false });
+      const raced = await readPaper(upstream, contract, fetchApi);
+      if (raced === value) return jsonResponse({ contract, value, idempotent: true });
+      return jsonError('This PAPER contract changed before it could be claimed.', 409);
     }
 
     if (request.method === 'POST' && operation === 'post') {
       const room = roomName(url.searchParams.get('room'));
       if (!room) return jsonError('Invalid Technocore room name.', 400);
-      const declared = Number(request.headers.get('content-length')) || 0;
-      if (declared > MAX_BODY) return jsonError('Request body is too large.', 413);
-      const raw = await request.text();
-      if (new TextEncoder().encode(raw).length > MAX_BODY) {
-        return jsonError('Request body is too large.', 413);
-      }
-      let payload;
-      try {
-        payload = JSON.parse(raw || '{}');
-      } catch (_) {
-        return jsonError('Request body must be JSON.', 400);
-      }
-      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-        return jsonError('Request body must be a JSON object.', 400);
-      }
+      const payload = await jsonObject(request);
       if (!DID_RE.test(String(payload.did || ''))
           || !SIG_RE.test(String(payload.sig || ''))
           || !NONCE_RE.test(String(payload.nonce || ''))
@@ -170,6 +282,7 @@ export async function handleTechnocoreProxy(
       );
     }
   } catch (error) {
+    if (error instanceof ProxyProblem) return jsonError(error.message, error.status);
     return jsonError(`Technocore upstream failed: ${error.message}`, 502);
   }
   return jsonError('Unknown Technocore proxy operation.', 404);

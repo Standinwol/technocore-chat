@@ -150,8 +150,15 @@ async function proxyJson(
   const text = await response.text();
   if (!response.ok) {
     const retryAfter = Number(response.headers.get('retry-after')) || 0;
+    let detail = text.trim();
+    try {
+      const parsed = JSON.parse(text);
+      if (typeof parsed?.error === 'string') detail = parsed.error;
+    } catch (_) {
+      // The upstream may intentionally return a plain-text error.
+    }
     throw new TechnocoreHttpError(
-      text.trim() || `Technocore returned HTTP ${response.status}.`,
+      detail || `Technocore returned HTTP ${response.status}.`,
       response.status,
       retryAfter,
     );
@@ -180,6 +187,28 @@ export function readTclkPaperRecord(contract, options = {}) {
   const normalized = String(contract || '').trim().toLowerCase();
   if (!TCLK_CONTRACT_RE.test(normalized)) throw new Error('Enter a valid tclk contract id.');
   return proxyJson('paper', { contract: normalized }, options);
+}
+
+export function writeTclkPaperLock(
+  contract, statement, refundAfterMs, options = {},
+) {
+  const normalized = String(contract || '').trim().toLowerCase();
+  if (!TCLK_CONTRACT_RE.test(normalized)) throw new Error('Enter a valid tclk contract id.');
+  return proxyJson('paper-lock', {}, {
+    ...options,
+    method: 'POST',
+    body: { contract: normalized, statement, refundAfterMs },
+  });
+}
+
+export function claimTclkPaperRecord(contract, secret, options = {}) {
+  const normalized = String(contract || '').trim().toLowerCase();
+  if (!TCLK_CONTRACT_RE.test(normalized)) throw new Error('Enter a valid tclk contract id.');
+  return proxyJson('paper-claim', {}, {
+    ...options,
+    method: 'POST',
+    body: { contract: normalized, secret },
+  });
 }
 
 export function postSignedTechnocoreMessage(signed, options = {}) {

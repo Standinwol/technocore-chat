@@ -37,6 +37,9 @@ assert.doesNotMatch(
 const proxySource = source('../client/api/technocore.mjs');
 assert.match(proxySource, /Cross-origin proxy request refused/);
 assert.match(proxySource, /A valid signed Technocore message is required/);
+assert.match(proxySource, /operation === 'paper-lock'/);
+assert.match(proxySource, /operation === 'paper-claim'/);
+assert.doesNotMatch(proxySource, /payload\.(?:namespace|key|value)/);
 assert.doesNotMatch(proxySource, /Access-Control-Allow-Origin/i);
 
 console.log('client security probe: ok');

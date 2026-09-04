@@ -20,6 +20,7 @@ import {
   tickerFromStream,
 } from './market.mjs';
 import {
+  claimTclkPaperRecord,
   listTechnocoreRooms,
   nextTechnocoreNonce,
   normalizeRoom,
@@ -28,16 +29,24 @@ import {
   readTclkPaperRecord,
   saveTechnocoreNonce,
   signTechnocoreMessage,
+  writeTclkPaperLock,
 } from './technocore.mjs';
 import { populateRoomOptions, renderRoomMessages } from './room-ui.mjs';
 import {
   analyzeTclkMessages,
+  encodeTclkFrame,
+  makePaperDemoAccept,
+  makePaperDemoLock,
+  makePaperDemoOffer,
+  makePaperDemoReceipt,
+  makePaperDemoReveal,
   renderTclkDeals,
   TCLK_OFFER_ROOM,
   tclkSummaryText,
 } from './tclk-viewer.mjs';
 
 const TECHNOCORE_ORIGIN = 'https://technocore.chat';
+const TCLK_DEMO_STORAGE_KEY = 'signal-id-tclk-paper-demo-v1';
 
 export {
   canonicalSnapshot,
@@ -59,6 +68,7 @@ export {
 export {
   buildSignedMessageUrl,
   cleanTechnocoreText,
+  claimTclkPaperRecord,
   listTechnocoreRooms,
   normalizeTechnocoreOrigin,
   normalizeRoom,
@@ -66,6 +76,7 @@ export {
   readTechnocoreRoom,
   readTclkPaperRecord,
   signTechnocoreMessage,
+  writeTclkPaperLock,
 } from './technocore.mjs';
 
 function startApp() {
@@ -96,6 +107,11 @@ function startApp() {
     roomMessageFilter: document.getElementById('room-message-filter'),
     tclkSummary: document.getElementById('tclk-summary'),
     tclkDeals: document.getElementById('tclk-deals'),
+    tclkDemoAmount: document.getElementById('tclk-demo-amount'),
+    tclkDemoPayer: document.getElementById('tclk-demo-payer'),
+    tclkDemoPayee: document.getElementById('tclk-demo-payee'),
+    tclkDemoContract: document.getElementById('tclk-demo-contract'),
+    tclkDemoStatus: document.getElementById('tclk-demo-status'),
   };
   const buttons = {
     copyDid: document.getElementById('copy-did'),
@@ -107,6 +123,13 @@ function startApp() {
     refreshRooms: document.getElementById('refresh-rooms'),
     connectRoom: document.getElementById('connect-room'),
     sendRoomMessage: document.getElementById('send-room-message'),
+    tclkDemoConnect: document.getElementById('tclk-demo-connect'),
+    tclkDemoReset: document.getElementById('tclk-demo-reset'),
+    tclkDemoOffer: document.getElementById('tclk-demo-offer'),
+    tclkDemoAccept: document.getElementById('tclk-demo-accept'),
+    tclkDemoLock: document.getElementById('tclk-demo-lock'),
+    tclkDemoReveal: document.getElementById('tclk-demo-reveal'),
+    tclkDemoReceipt: document.getElementById('tclk-demo-receipt'),
   };
   let identity = null;
   let tickers = new Map();
@@ -123,6 +146,9 @@ function startApp() {
   let roomPosting = false;
   let roomTranscript = [];
   let tclkAnalysis = analyzeTclkMessages([]);
+  let tclkDemo = loadTclkDemoState();
+  let tclkDemoBusy = false;
+  let tclkDemoNotice = null;
   const renderedRoomSequences = new Set();
   const tclkPaperRecords = new Map();
   const tclkPaperReads = new Map();
@@ -339,6 +365,136 @@ function startApp() {
     }
   }
 
+  function loadTclkDemoState() {
+    try {
+      const value = JSON.parse(sessionStorage.getItem(TCLK_DEMO_STORAGE_KEY) || 'null');
+      if (value?.version !== 1
+          || value.room !== TCLK_OFFER_ROOM
+          || typeof value.payerDid !== 'string'
+          || typeof value.payeeDid !== 'string'
+          || !/^[0-9a-f]{64}$/.test(String(value.payeeSeed || ''))
+          || !value.offer
+          || !value.sequences
+          || typeof value.sequences !== 'object') return null;
+      return value;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function saveTclkDemoState() {
+    try {
+      if (tclkDemo) sessionStorage.setItem(TCLK_DEMO_STORAGE_KEY, JSON.stringify(tclkDemo));
+      else sessionStorage.removeItem(TCLK_DEMO_STORAGE_KEY);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function clearTclkDemoState() {
+    tclkDemo = null;
+    tclkDemoNotice = null;
+    saveTclkDemoState();
+  }
+
+  function shortTclkValue(value, head = 14, tail = 8) {
+    const text = String(value || '');
+    return text.length > head + tail + 1 ? `${text.slice(0, head)}…${text.slice(-tail)}` : text;
+  }
+
+  function setTclkDemoFact(element, value, fallback) {
+    const text = String(value || '');
+    element.textContent = text ? shortTclkValue(text) : fallback;
+    element.title = text;
+  }
+
+  function setTclkDemoNotice(text, kind = '') {
+    tclkDemoNotice = { text, kind };
+  }
+
+  function refreshTclkDemo() {
+    const sequences = tclkDemo?.sequences || {};
+    const inRoom = activeRoom === TCLK_OFFER_ROOM;
+    const ownsDemo = !tclkDemo || identity?.did === tclkDemo.payerDid;
+    const enabled = Boolean(identity && inRoom && ownsDemo && !tclkDemoBusy);
+    const completed = {
+      offer: Boolean(sequences.offer),
+      accept: Boolean(sequences.accept),
+      lock: Boolean(sequences.lock && tclkDemo?.paperLocked),
+      reveal: Boolean(sequences.reveal && tclkDemo?.paperClaimed),
+      receipt: Boolean(sequences.receipt),
+    };
+
+    elements.tclkDemoAmount.disabled = Boolean(tclkDemo) || tclkDemoBusy;
+    buttons.tclkDemoConnect.disabled = inRoom || tclkDemoBusy;
+    buttons.tclkDemoReset.disabled = !tclkDemo || tclkDemoBusy;
+    buttons.tclkDemoOffer.disabled = !enabled || completed.offer;
+    buttons.tclkDemoAccept.disabled = !enabled || !completed.offer || completed.accept;
+    buttons.tclkDemoLock.disabled = !enabled || !completed.accept || completed.lock;
+    buttons.tclkDemoReveal.disabled = !enabled || !completed.lock || completed.reveal;
+    buttons.tclkDemoReceipt.disabled = !enabled || !completed.reveal || completed.receipt;
+
+    buttons.tclkDemoOffer.textContent = tclkDemo && !sequences.offer ? 'Retry offer' : 'Post offer';
+    buttons.tclkDemoAccept.textContent = tclkDemo?.accept && !sequences.accept
+      ? 'Retry accept' : 'Accept as test payee';
+    buttons.tclkDemoLock.textContent = tclkDemo?.paperLocked && !sequences.lock
+      ? 'Post lock frame' : 'Lock PAPER';
+    buttons.tclkDemoReveal.textContent = sequences.reveal && !tclkDemo?.paperClaimed
+      ? 'Retry PAPER claim' : 'Reveal & claim';
+
+    for (const [step, done] of Object.entries(completed)) {
+      document.querySelector(`[data-demo-step="${step}"]`)?.classList.toggle('done', done);
+    }
+    setTclkDemoFact(elements.tclkDemoPayer, tclkDemo?.payerDid || identity?.did, 'Generate or import a DID');
+    setTclkDemoFact(elements.tclkDemoPayee, tclkDemo?.payeeDid, 'Created at step 1');
+    setTclkDemoFact(elements.tclkDemoContract, tclkDemo?.accept?.contract, 'Created at step 2');
+
+    let notice = tclkDemoNotice;
+    if (!notice) {
+      if (!identity) notice = { text: 'Generate or import a DID first.', kind: '' };
+      else if (tclkDemo && !ownsDemo) {
+        notice = { text: 'This demo belongs to another payer DID. Restore it or start a new demo.', kind: 'error' };
+      } else if (!inRoom) notice = { text: 'Open /r/tclk-offers to enable step 1.', kind: '' };
+      else if (!completed.offer) notice = { text: 'Ready for step 1: post the PAPER offer.', kind: '' };
+      else if (!completed.accept) notice = { text: 'Offer posted. Continue with step 2.', kind: '' };
+      else if (!completed.lock) notice = { text: 'Accepted. Continue with step 3.', kind: '' };
+      else if (!completed.reveal) notice = { text: 'PAPER is locked. Continue with step 4.', kind: '' };
+      else if (!completed.receipt) notice = { text: 'PAPER is claimed. Continue with step 5.', kind: '' };
+      else notice = { text: 'Demo complete: offer → accept → lock → reveal → receipt.', kind: 'success' };
+    }
+    elements.tclkDemoStatus.textContent = notice.text;
+    elements.tclkDemoStatus.classList.toggle('error', notice.kind === 'error');
+    elements.tclkDemoStatus.classList.toggle('success', notice.kind === 'success');
+  }
+
+  function requireTclkDemo() {
+    if (!identity) throw new Error('Generate or import a DID first.');
+    if (activeRoom !== TCLK_OFFER_ROOM) throw new Error('Open /r/tclk-offers first.');
+    if (!tclkDemo) throw new Error('Post an offer first.');
+    if (identity.did !== tclkDemo.payerDid) {
+      throw new Error('Restore the payer DID used to start this demo.');
+    }
+    return tclkDemo;
+  }
+
+  async function runTclkDemoAction(progress, action) {
+    if (tclkDemoBusy) return;
+    tclkDemoBusy = true;
+    setTclkDemoNotice(progress);
+    refreshTclkDemo();
+    try {
+      const message = await action();
+      setTclkDemoNotice(message, message.startsWith('Demo complete') ? 'success' : '');
+    } catch (error) {
+      const reason = String(error.message || error).split('\n')[0].slice(0, 220);
+      setTclkDemoNotice(`Step failed: ${reason}`, 'error');
+    } finally {
+      tclkDemoBusy = false;
+      refreshTclkDemo();
+    }
+  }
+
   async function refreshPaperRecords(analysis, room) {
     const now = Date.now();
     const targets = analysis.deals.filter((deal) => (
@@ -462,6 +618,8 @@ function startApp() {
     elements.roomCursor.textContent = 'Sequence —';
     elements.chatRoom.value = room;
     refreshRoomComposer();
+    tclkDemoNotice = null;
+    refreshTclkDemo();
     setRoomState('Connecting', `Loading /r/${room} history…`);
     try {
       const historyLimit = room === TCLK_OFFER_ROOM ? 200 : 50;
@@ -477,6 +635,7 @@ function startApp() {
       if (controller.signal.aborted || error.name === 'AbortError') return;
       activeRoom = '';
       refreshRoomComposer();
+      refreshTclkDemo();
       const reason = String(error.message || error).split('\n')[0].slice(0, 180);
       setRoomState('Disconnected', reason, { error: true });
     }
@@ -523,6 +682,8 @@ function startApp() {
         button.disabled = false;
       }
       refreshRoomComposer();
+      tclkDemoNotice = null;
+      refreshTclkDemo();
       return true;
     } catch (error) {
       elements.identityMessage.textContent = identity
@@ -556,6 +717,7 @@ function startApp() {
   function forgetIdentity() {
     identity = null;
     clearIdentitySeed(localStorage, sessionStorage);
+    clearTclkDemoState();
     elements.seed.value = '';
     elements.seed.type = 'password';
     elements.did.value = 'Generate or import a seed to begin';
@@ -566,6 +728,7 @@ function startApp() {
       button.disabled = true;
     }
     refreshRoomComposer();
+    refreshTclkDemo();
   }
 
   async function copyText(value, message, statusElement = elements.identityMessage) {
@@ -617,18 +780,154 @@ function startApp() {
     elements.identityMessage.textContent = 'Seed file downloaded. Store it securely.';
   }
 
-  async function prepareRoomMessage(room, message) {
-    if (!identity) throw new Error('Generate or import a DID first.');
-    const nonce = nextTechnocoreNonce(localStorage, TECHNOCORE_ORIGIN, identity.did, room);
-    const signed = await signTechnocoreMessage(identity, room, nonce, message);
+  async function prepareSignedRoomMessage(signer, room, message) {
+    if (!signer?.did) throw new Error('Generate or import a DID first.');
+    const nonce = nextTechnocoreNonce(localStorage, TECHNOCORE_ORIGIN, signer.did, room);
+    const signed = await signTechnocoreMessage(signer, room, nonce, message);
     saveTechnocoreNonce(
       localStorage,
       TECHNOCORE_ORIGIN,
-      identity.did,
+      signer.did,
       signed.room,
       signed.nonce,
     );
     return signed;
+  }
+
+  function prepareRoomMessage(room, message) {
+    return prepareSignedRoomMessage(identity, room, message);
+  }
+
+  async function postTclkDemoFrame(signer, frame) {
+    const signed = await prepareSignedRoomMessage(
+      signer,
+      TCLK_OFFER_ROOM,
+      encodeTclkFrame(frame),
+    );
+    const view = await postSignedTechnocoreMessage(signed);
+    const sequence = Number(view?.posted?.seq);
+    if (!Number.isInteger(sequence) || sequence < 1) {
+      throw new Error('Technocore accepted the frame but returned no posted sequence.');
+    }
+    if (activeRoom === TCLK_OFFER_ROOM) {
+      applyRoomView({ messages: [view.posted] }, { advanceCursor: false });
+    }
+    return sequence;
+  }
+
+  async function postTclkDemoOffer() {
+    if (!identity) throw new Error('Generate or import a DID first.');
+    if (activeRoom !== TCLK_OFFER_ROOM) throw new Error('Open /r/tclk-offers first.');
+    if (!tclkDemo) {
+      const amount = elements.tclkDemoAmount.value.trim();
+      if (!/^[1-9][0-9]{0,23}$/.test(amount)) {
+        throw new Error('Amount must be a positive integer with at most 24 digits.');
+      }
+      const seedBytes = new Uint8Array(32);
+      crypto.getRandomValues(seedBytes);
+      const payee = await createIdentity(hex(seedBytes));
+      tclkDemo = {
+        version: 1,
+        room: TCLK_OFFER_ROOM,
+        payerDid: identity.did,
+        payeeDid: payee.did,
+        payeeSeed: payee.seed,
+        offer: makePaperDemoOffer(identity.did, amount),
+        sequences: {},
+        paperLocked: false,
+        paperClaimed: false,
+      };
+      saveTclkDemoState();
+    }
+    const demo = requireTclkDemo();
+    if (!demo.sequences.offer) {
+      demo.sequences.offer = await postTclkDemoFrame(identity, demo.offer);
+      saveTclkDemoState();
+    }
+    return `Step 1 done: offer posted as #${demo.sequences.offer}.`;
+  }
+
+  async function postTclkDemoAccept() {
+    const demo = requireTclkDemo();
+    if (!demo.sequences.offer) throw new Error('Post the offer first.');
+    const payee = await createIdentity(demo.payeeSeed);
+    if (payee.did !== demo.payeeDid) throw new Error('The temporary payee seed is inconsistent.');
+    if (!demo.accept) {
+      const result = makePaperDemoAccept(demo.offer, payee.did);
+      demo.accept = result.accept;
+      demo.secret = result.secret;
+      saveTclkDemoState();
+    }
+    if (!demo.sequences.accept) {
+      demo.sequences.accept = await postTclkDemoFrame(payee, demo.accept);
+      saveTclkDemoState();
+    }
+    return `Step 2 done: accept posted as #${demo.sequences.accept}.`;
+  }
+
+  async function postTclkDemoLock() {
+    const demo = requireTclkDemo();
+    if (!demo.sequences.accept || !demo.accept) throw new Error('Accept the offer first.');
+    if (!demo.lock) {
+      demo.lock = makePaperDemoLock(demo.accept, demo.payerDid);
+      saveTclkDemoState();
+    }
+    if (!demo.paperLocked) {
+      const result = await writeTclkPaperLock(
+        demo.accept.contract,
+        demo.accept.statement,
+        demo.offer.refundAfterMs,
+      );
+      demo.paperLocked = true;
+      tclkPaperRecords.set(demo.accept.contract, result.value);
+      tclkPaperReads.delete(demo.accept.contract);
+      saveTclkDemoState();
+    }
+    if (!demo.sequences.lock) {
+      demo.sequences.lock = await postTclkDemoFrame(identity, demo.lock);
+      saveTclkDemoState();
+    }
+    updateTclkViewer();
+    return `Step 3 done: PAPER locked and frame posted as #${demo.sequences.lock}.`;
+  }
+
+  async function postTclkDemoReveal() {
+    const demo = requireTclkDemo();
+    if (!demo.sequences.lock || !demo.paperLocked) throw new Error('Lock PAPER first.');
+    if (!demo.accept || !demo.secret) throw new Error('The temporary payee secret is missing.');
+    const payee = await createIdentity(demo.payeeSeed);
+    if (payee.did !== demo.payeeDid) throw new Error('The temporary payee seed is inconsistent.');
+    if (!demo.reveal) {
+      demo.reveal = makePaperDemoReveal(demo.accept, payee.did, demo.secret);
+      saveTclkDemoState();
+    }
+    if (!demo.sequences.reveal) {
+      demo.sequences.reveal = await postTclkDemoFrame(payee, demo.reveal);
+      saveTclkDemoState();
+    }
+    if (!demo.paperClaimed) {
+      const result = await claimTclkPaperRecord(demo.accept.contract, demo.secret);
+      demo.paperClaimed = true;
+      tclkPaperRecords.set(demo.accept.contract, result.value);
+      tclkPaperReads.delete(demo.accept.contract);
+      saveTclkDemoState();
+    }
+    updateTclkViewer();
+    return `Step 4 done: reveal posted as #${demo.sequences.reveal} and PAPER claimed.`;
+  }
+
+  async function postTclkDemoReceipt() {
+    const demo = requireTclkDemo();
+    if (!demo.sequences.reveal || !demo.paperClaimed) throw new Error('Reveal and claim PAPER first.');
+    if (!demo.receipt) {
+      demo.receipt = makePaperDemoReceipt(demo.accept, demo.payerDid);
+      saveTclkDemoState();
+    }
+    if (!demo.sequences.receipt) {
+      demo.sequences.receipt = await postTclkDemoFrame(identity, demo.receipt);
+      saveTclkDemoState();
+    }
+    return `Demo complete: receipt posted as #${demo.sequences.receipt}.`;
   }
 
   async function sendRoomMessage() {
@@ -801,11 +1100,37 @@ function startApp() {
   elements.roomMessageFilter.addEventListener('change', applyRoomMessageFilter);
   elements.roomLog.addEventListener('click', handleContactAction);
   elements.tclkDeals.addEventListener('click', handleContactAction);
+  buttons.tclkDemoConnect.addEventListener('click', () => {
+    elements.chatRoom.value = TCLK_OFFER_ROOM;
+    void connectRoom();
+  });
+  buttons.tclkDemoReset.addEventListener('click', () => {
+    if (tclkDemo && Object.keys(tclkDemo.sequences || {}).length
+        && !window.confirm('Start a new local demo? Public frames and PAPER notes already written cannot be removed.')) return;
+    clearTclkDemoState();
+    refreshTclkDemo();
+  });
+  buttons.tclkDemoOffer.addEventListener('click', () => {
+    void runTclkDemoAction('Creating the temporary payee and posting the offer…', postTclkDemoOffer);
+  });
+  buttons.tclkDemoAccept.addEventListener('click', () => {
+    void runTclkDemoAction('Minting the hash secret and posting the acceptance…', postTclkDemoAccept);
+  });
+  buttons.tclkDemoLock.addEventListener('click', () => {
+    void runTclkDemoAction('Writing the PAPER lock and posting its frame…', postTclkDemoLock);
+  });
+  buttons.tclkDemoReveal.addEventListener('click', () => {
+    void runTclkDemoAction('Posting the reveal and claiming the PAPER note…', postTclkDemoReveal);
+  });
+  buttons.tclkDemoReceipt.addEventListener('click', () => {
+    void runTclkDemoAction('Posting the terminal receipt…', postTclkDemoReceipt);
+  });
 
   renderMarket();
   addAgentMessage('agent', 'Hello. I track the live Binance data in your watchlist. Try “BTC price” or “Top losers”.');
   refreshRoomComposer();
   updateTclkViewer();
+  refreshTclkDemo();
   const savedSeed = loadIdentitySeed(localStorage, sessionStorage);
   if (savedSeed) {
     elements.identityMessage.textContent = 'Restoring saved DID…';

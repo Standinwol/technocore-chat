@@ -211,9 +211,55 @@
               </select>
             </label>
           </div>
+          <div class="tclk-demo" aria-labelledby="tclk-demo-title">
+            <div class="tclk-demo-heading">
+              <div>
+                <p class="section-kicker">Guided rehearsal</p>
+                <h4 id="tclk-demo-title">Create a claimed PAPER deal</h4>
+              </div>
+              <button id="tclk-demo-reset" class="text-button" type="button">New demo</button>
+            </div>
+            <p class="tclk-demo-copy">Use your browser DID as payer and a temporary in-tab DID as
+              payee. Each enabled button writes only that public protocol step.</p>
+            <div class="tclk-demo-setup">
+              <label for="tclk-demo-amount">Amount (PAPER)
+                <input id="tclk-demo-amount" inputmode="numeric" pattern="[1-9][0-9]*"
+                       maxlength="24" value="1000000">
+              </label>
+              <button id="tclk-demo-connect" class="button button-secondary" type="button">Open /r/tclk-offers</button>
+            </div>
+            <dl class="tclk-demo-facts">
+              <div><dt>Payer</dt><dd id="tclk-demo-payer">Generate or import a DID</dd></div>
+              <div><dt>Test payee</dt><dd id="tclk-demo-payee">Created at step 1</dd></div>
+              <div><dt>Contract</dt><dd id="tclk-demo-contract">Created at step 2</dd></div>
+            </dl>
+            <ol class="tclk-demo-steps">
+              <li data-demo-step="offer">
+                <span><strong>1 · Offer</strong><small>Post payer terms to tclk-offers.</small></span>
+                <button id="tclk-demo-offer" class="button button-primary" type="button" disabled>Post offer</button>
+              </li>
+              <li data-demo-step="accept">
+                <span><strong>2 · Accept</strong><small>Temporary payee mints the hash secret and accepts.</small></span>
+                <button id="tclk-demo-accept" class="button button-secondary" type="button" disabled>Accept as test payee</button>
+              </li>
+              <li data-demo-step="lock">
+                <span><strong>3 · Lock</strong><small>Create the PAPER note, then post its lock frame.</small></span>
+                <button id="tclk-demo-lock" class="button button-secondary" type="button" disabled>Lock PAPER</button>
+              </li>
+              <li data-demo-step="reveal">
+                <span><strong>4 · Reveal</strong><small>Publish the preimage and mark the PAPER note claimed.</small></span>
+                <button id="tclk-demo-reveal" class="button button-secondary" type="button" disabled>Reveal &amp; claim</button>
+              </li>
+              <li data-demo-step="receipt">
+                <span><strong>5 · Receipt</strong><small>Payer acknowledges the claimed outcome.</small></span>
+                <button id="tclk-demo-receipt" class="button button-secondary" type="button" disabled>Post receipt</button>
+              </li>
+            </ol>
+            <p id="tclk-demo-status" class="tclk-demo-status" aria-live="polite">Connect your DID to /r/tclk-offers to start.</p>
+          </div>
           <div id="tclk-deals" class="tclk-deals" aria-live="polite"></div>
-          <p class="tclk-disclaimer">Read-only protocol inspection. PAPER records are rehearsals
-            and do not represent tokens, escrowed funds or mainnet settlement.</p>
+          <p class="tclk-disclaimer">The viewer is read-only; the guided buttons explicitly write
+            public rehearsal frames and PAPER notes. PAPER has no token, funds, custody or mainnet settlement.</p>
         </section>
 
         <div id="room-log" class="room-log" role="log" aria-live="polite"

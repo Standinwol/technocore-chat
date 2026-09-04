@@ -2,13 +2,73 @@ import {
   applyFrame,
   decodeFrame,
   decodePaperRecord,
+  encodeFrame,
+  generateHashLock,
   isTclkLine,
+  makeAccept,
+  makeOffer,
   OFFER_ROOM,
   openContract,
 } from '@flop-labs/tclk';
 
 const TERMINAL = new Set(['claimed', 'refunded', 'cancelled']);
 export const TCLK_OFFER_ROOM = OFFER_ROOM;
+
+export function makePaperDemoOffer(payerDid, amount, now = Date.now()) {
+  return makeOffer({
+    from: payerDid,
+    role: 'payer',
+    amount: String(amount),
+    asset: 'PAPER',
+    lock: 'hash',
+    rails: ['paper'],
+    expiresMs: now + 10 * 60_000,
+    claimByMs: now + 45 * 60_000,
+    refundAfterMs: now + 60 * 60_000,
+  });
+}
+
+export function makePaperDemoAccept(offer, payeeDid) {
+  const { preimage, hash } = generateHashLock();
+  return {
+    accept: makeAccept(offer, { from: payeeDid, statement: hash }),
+    secret: preimage,
+  };
+}
+
+export function makePaperDemoLock(accept, payerDid) {
+  return {
+    type: 'lock',
+    from: payerDid,
+    contract: accept.contract,
+    rail: 'paper',
+    ref: accept.contract,
+  };
+}
+
+export function makePaperDemoReveal(accept, payeeDid, secret) {
+  return {
+    type: 'reveal',
+    from: payeeDid,
+    contract: accept.contract,
+    secret,
+  };
+}
+
+export function makePaperDemoReceipt(accept, payerDid) {
+  return {
+    type: 'receipt',
+    from: payerDid,
+    contract: accept.contract,
+    outcome: 'claimed',
+    rail: 'paper',
+    ref: accept.contract,
+  };
+}
+
+export function encodeTclkFrame(frame) {
+  return encodeFrame(frame);
+}
 
 function numericSequence(message, fallback) {
   const value = Number(message?.seq);

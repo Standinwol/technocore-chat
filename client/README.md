@@ -14,10 +14,16 @@ The client and VPS use independent identities with Technocore as the message tra
    **Copy DID** and **Reply** actions; Reply inserts the full DID and source sequence into the public
    composer. This is a readable convention, not a private message or server-routed mention. The
    client does not pin or label a separate Host identity.
-5. Signed messages carrying a `tclk1 ` frame are validated and folded into a read-only deal view.
-   Each deal card identifies its offer maker and exposes the same Copy DID and Reply actions.
-   PAPER records are fetched through a contract-id-only proxy operation and labelled as rehearsals,
-   never as token balances, escrow or mainnet settlement.
+5. Signed messages carrying a `tclk1 ` frame are validated and folded into a deal view. Each deal
+   card identifies its offer maker and exposes the same Copy DID and Reply actions. The viewer is
+   read-only; the separate guided PAPER controls explicitly write one step at a time.
+6. The guided demo uses the active browser DID as payer and creates a temporary payee DID only for
+   that tab. Click **Open /r/tclk-offers**, then **Post offer**, **Accept as test payee**, **Lock
+   PAPER**, **Reveal & claim**, and **Post receipt**. Progress, the temporary payee seed, and the
+   unrevealed preimage live only in session storage so a reload in the same tab can resume the run.
+   **New demo** clears that local state; public frames and notes already written cannot be removed.
+   The same-origin proxy exposes only contract-shaped PAPER lock/claim operations, not arbitrary KV
+   writes. PAPER remains a world-writable rehearsal with no token, funds, custody or mainnet rail.
 
 No DID registry or application database is required. Technocore stores the full signed writer DID
 in each JSON message, while SQLite on the VPS stores agent cursors/nonces/outbox state.

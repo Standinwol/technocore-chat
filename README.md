@@ -39,9 +39,12 @@ automatically, sends on Enter, and renders acknowledged writes immediately witho
 long-polled history. Private
 key material is never sent by the page. Copy DID and Reply actions expose the complete signed
 sender identity and prefill a public room reply with its source sequence; they do not create a DM
-or routed mention. A read-only `tclk/1` viewer recognizes signed protocol
-frames in the loaded room window, validates and folds them with `@flop-labs/tclk`, and checks a
-contract's public PAPER rehearsal record without treating it as funds or settlement.
+or routed mention. A `tclk/1` viewer recognizes signed protocol frames in the loaded room window,
+validates and folds them with `@flop-labs/tclk`, and checks a contract's public PAPER rehearsal
+record without treating it as funds or settlement. Its opt-in guided demo walks one browser through
+`offer → accept → lock → reveal → receipt`: the active browser DID is the payer and a temporary,
+tab-scoped DID is the test payee. Each click explicitly writes one public rehearsal step. The
+temporary seed and unrevealed preimage stay in session storage and are never sent as configuration.
 
 Run it locally:
 

@@ -480,6 +480,12 @@ function hexToU8a(value) {
 function stringToU8a(value) {
   return new TextEncoder().encode(value);
 }
+function randomU8a(length) {
+  if (typeof crypto === "undefined" || typeof crypto.getRandomValues !== "function") {
+    throw new Error("tclk: no Web Crypto CSPRNG available (crypto.getRandomValues)");
+  }
+  return crypto.getRandomValues(new Uint8Array(length));
+}
 
 // node_modules/@noble/curves/utils.js
 /*! noble-curves - MIT License (c) 2022 Paul Miller (paulmillr.com) */
@@ -2643,6 +2649,7 @@ function isValidPointStatement(statement) {
 // node_modules/@flop-labs/tclk/dist/frames.js
 var TCLK_PREFIX = "tclk1 ";
 var TCLK_DOMAIN = "FLOP::tclk::v1";
+var MAX_FRAME_CHARS = 4096;
 var HEX32 = /^0x[0-9a-f]{64}$/;
 var HEX33 = /^0x[0-9a-f]{66}$/;
 var DID = /^did:key:z6Mk[1-9A-HJ-NP-Za-km-z]{44}$/;
@@ -2870,8 +2877,48 @@ function validateFrame(value) {
   }
   return value;
 }
+function makeOffer(fields) {
+  const body = {
+    ...fields,
+    type: "offer",
+    nonce: fields.nonce ?? u8aToHex(randomU8a(8)).slice(2)
+  };
+  return validateFrame({ ...body, id: offerId(body) });
+}
+function makeAccept(offer, accept) {
+  validateFrame(offer);
+  if (accept.from === offer.from)
+    fail("accept.from must differ from offer.from");
+  if (!isValidStatement(offer.lock, accept.statement)) {
+    fail(`statement does not fit a ${offer.lock} lock: ${accept.statement}`);
+  }
+  if (offer.lock === "point" && accept.paymentKey === void 0) {
+    fail("point locks require the acceptor's paymentKey");
+  }
+  const core = {
+    from: accept.from,
+    ref: offer.id,
+    statement: accept.statement,
+    paymentKey: accept.paymentKey,
+    nonce: accept.nonce ?? u8aToHex(randomU8a(8)).slice(2)
+  };
+  return validateFrame({
+    type: "accept",
+    ...core,
+    contract: contractId(offer, core)
+  });
+}
 function isTclkLine(text) {
   return text.startsWith(TCLK_PREFIX);
+}
+function encodeFrame(frame) {
+  const line = TCLK_PREFIX + toAscii(canonicalJson(validateFrame(frame)));
+  if (line.length > MAX_FRAME_CHARS) {
+    fail(`frame exceeds the ${MAX_FRAME_CHARS}-char room-message cap (${line.length})`);
+  }
+  if (!/^[\x20-\x7e]*$/.test(line))
+    fail("frame line contains non-printable-ASCII characters");
+  return line;
 }
 function decodeFrame(text) {
   if (!isTclkLine(text))
@@ -2892,6 +2939,9 @@ function hashLockFromPreimage(preimage) {
     throw new Error(`tclk: hash-lock preimage must be 32 bytes, got ${p.length}`);
   }
   return { preimage: u8aToHex(p), hash: u8aToHex(sha256(p)) };
+}
+function generateHashLock() {
+  return hashLockFromPreimage(randomU8a(32));
 }
 function verifyHashPreimage(hash, preimage) {
   try {
@@ -3077,6 +3127,56 @@ var N = P256.CURVE().n;
 // tools/tclk-viewer-entry.mjs
 var TERMINAL = /* @__PURE__ */ new Set(["claimed", "refunded", "cancelled"]);
 var TCLK_OFFER_ROOM = OFFER_ROOM;
+function makePaperDemoOffer(payerDid, amount, now = Date.now()) {
+  return makeOffer({
+    from: payerDid,
+    role: "payer",
+    amount: String(amount),
+    asset: "PAPER",
+    lock: "hash",
+    rails: ["paper"],
+    expiresMs: now + 10 * 6e4,
+    claimByMs: now + 45 * 6e4,
+    refundAfterMs: now + 60 * 6e4
+  });
+}
+function makePaperDemoAccept(offer, payeeDid) {
+  const { preimage, hash } = generateHashLock();
+  return {
+    accept: makeAccept(offer, { from: payeeDid, statement: hash }),
+    secret: preimage
+  };
+}
+function makePaperDemoLock(accept, payerDid) {
+  return {
+    type: "lock",
+    from: payerDid,
+    contract: accept.contract,
+    rail: "paper",
+    ref: accept.contract
+  };
+}
+function makePaperDemoReveal(accept, payeeDid, secret) {
+  return {
+    type: "reveal",
+    from: payeeDid,
+    contract: accept.contract,
+    secret
+  };
+}
+function makePaperDemoReceipt(accept, payerDid) {
+  return {
+    type: "receipt",
+    from: payerDid,
+    contract: accept.contract,
+    outcome: "claimed",
+    rail: "paper",
+    ref: accept.contract
+  };
+}
+function encodeTclkFrame(frame) {
+  return encodeFrame(frame);
+}
 function numericSequence(message, fallback) {
   const value = Number(message?.seq);
   return Number.isSafeInteger(value) && value > 0 ? value : fallback;
@@ -3333,6 +3433,12 @@ export {
   TCLK_OFFER_ROOM,
   analyzeTclkMessages,
   checkPaperRecord,
+  encodeTclkFrame,
+  makePaperDemoAccept,
+  makePaperDemoLock,
+  makePaperDemoOffer,
+  makePaperDemoReceipt,
+  makePaperDemoReveal,
   renderTclkDeals,
   tclkSummaryText
 };
