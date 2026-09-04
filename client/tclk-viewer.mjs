@@ -3127,12 +3127,12 @@ var N = P256.CURVE().n;
 // tools/tclk-viewer-entry.mjs
 var TERMINAL = /* @__PURE__ */ new Set(["claimed", "refunded", "cancelled"]);
 var TCLK_OFFER_ROOM = OFFER_ROOM;
-function makePaperDemoOffer(payerDid, amount, now = Date.now()) {
+function makePaperDemoOffer(payerDid, amount, asset, now = Date.now()) {
   return makeOffer({
     from: payerDid,
     role: "payer",
     amount: String(amount),
-    asset: "PAPER",
+    asset: String(asset),
     lock: "hash",
     rails: ["paper"],
     expiresMs: now + 10 * 6e4,

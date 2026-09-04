@@ -215,14 +215,18 @@
             <div class="tclk-demo-heading">
               <div>
                 <p class="section-kicker">Guided rehearsal</p>
-                <h4 id="tclk-demo-title">Create a claimed PAPER deal</h4>
+                <h4 id="tclk-demo-title">Create a claimed test deal</h4>
               </div>
               <button id="tclk-demo-reset" class="text-button" type="button">New demo</button>
             </div>
             <p class="tclk-demo-copy">Use your browser DID as payer and a temporary in-tab DID as
               payee. Each enabled button writes only that public protocol step.</p>
             <div class="tclk-demo-setup">
-              <label for="tclk-demo-amount">Amount (PAPER)
+              <label for="tclk-demo-asset">Asset / token name
+                <input id="tclk-demo-asset" maxlength="32" autocomplete="off"
+                       autocapitalize="characters" spellcheck="false" placeholder="e.g. TESTCOIN">
+              </label>
+              <label for="tclk-demo-amount">Amount
                 <input id="tclk-demo-amount" inputmode="numeric" pattern="[1-9][0-9]*"
                        maxlength="24" value="1000000">
               </label>

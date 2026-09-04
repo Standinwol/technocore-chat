@@ -107,6 +107,7 @@ function startApp() {
     roomMessageFilter: document.getElementById('room-message-filter'),
     tclkSummary: document.getElementById('tclk-summary'),
     tclkDeals: document.getElementById('tclk-deals'),
+    tclkDemoAsset: document.getElementById('tclk-demo-asset'),
     tclkDemoAmount: document.getElementById('tclk-demo-amount'),
     tclkDemoPayer: document.getElementById('tclk-demo-payer'),
     tclkDemoPayee: document.getElementById('tclk-demo-payee'),
@@ -426,6 +427,11 @@ function startApp() {
       receipt: Boolean(sequences.receipt),
     };
 
+    if (tclkDemo?.offer) {
+      elements.tclkDemoAsset.value = tclkDemo.offer.asset;
+      elements.tclkDemoAmount.value = tclkDemo.offer.amount;
+    }
+    elements.tclkDemoAsset.disabled = Boolean(tclkDemo) || tclkDemoBusy;
     elements.tclkDemoAmount.disabled = Boolean(tclkDemo) || tclkDemoBusy;
     buttons.tclkDemoConnect.disabled = inRoom || tclkDemoBusy;
     buttons.tclkDemoReset.disabled = !tclkDemo || tclkDemoBusy;
@@ -456,7 +462,7 @@ function startApp() {
       else if (tclkDemo && !ownsDemo) {
         notice = { text: 'This demo belongs to another payer DID. Restore it or start a new demo.', kind: 'error' };
       } else if (!inRoom) notice = { text: 'Open /r/tclk-offers to enable step 1.', kind: '' };
-      else if (!completed.offer) notice = { text: 'Ready for step 1: post the PAPER offer.', kind: '' };
+      else if (!completed.offer) notice = { text: 'Ready for step 1: post the test offer.', kind: '' };
       else if (!completed.accept) notice = { text: 'Offer posted. Continue with step 2.', kind: '' };
       else if (!completed.lock) notice = { text: 'Accepted. Continue with step 3.', kind: '' };
       else if (!completed.reveal) notice = { text: 'PAPER is locked. Continue with step 4.', kind: '' };
@@ -819,7 +825,11 @@ function startApp() {
     if (!identity) throw new Error('Generate or import a DID first.');
     if (activeRoom !== TCLK_OFFER_ROOM) throw new Error('Open /r/tclk-offers first.');
     if (!tclkDemo) {
+      const asset = elements.tclkDemoAsset.value.trim();
       const amount = elements.tclkDemoAmount.value.trim();
+      if (!/^[A-Za-z0-9_-]{1,32}$/.test(asset)) {
+        throw new Error('Token name must use 1–32 letters, numbers, underscores, or hyphens.');
+      }
       if (!/^[1-9][0-9]{0,23}$/.test(amount)) {
         throw new Error('Amount must be a positive integer with at most 24 digits.');
       }
@@ -832,7 +842,7 @@ function startApp() {
         payerDid: identity.did,
         payeeDid: payee.did,
         payeeSeed: payee.seed,
-        offer: makePaperDemoOffer(identity.did, amount),
+        offer: makePaperDemoOffer(identity.did, amount, asset),
         sequences: {},
         paperLocked: false,
         paperClaimed: false,

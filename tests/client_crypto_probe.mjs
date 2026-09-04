@@ -83,7 +83,7 @@ for (const id of ['agent-log', 'agent-form', 'agent-question', 'report-interval'
   assert.ok(ids.includes(id), `missing #${id}`);
 }
 for (const id of [
-  'tclk-summary', 'tclk-deals', 'room-message-filter', 'tclk-demo-amount',
+  'tclk-summary', 'tclk-deals', 'room-message-filter', 'tclk-demo-asset', 'tclk-demo-amount',
   'tclk-demo-connect', 'tclk-demo-offer', 'tclk-demo-accept', 'tclk-demo-lock',
   'tclk-demo-reveal', 'tclk-demo-receipt', 'tclk-demo-reset', 'tclk-demo-status',
 ]) {

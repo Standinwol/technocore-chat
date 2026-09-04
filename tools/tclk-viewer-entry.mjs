@@ -14,12 +14,12 @@ import {
 const TERMINAL = new Set(['claimed', 'refunded', 'cancelled']);
 export const TCLK_OFFER_ROOM = OFFER_ROOM;
 
-export function makePaperDemoOffer(payerDid, amount, now = Date.now()) {
+export function makePaperDemoOffer(payerDid, amount, asset, now = Date.now()) {
   return makeOffer({
     from: payerDid,
     role: 'payer',
     amount: String(amount),
-    asset: 'PAPER',
+    asset: String(asset),
     lock: 'hash',
     rails: ['paper'],
     expiresMs: now + 10 * 60_000,

@@ -27,18 +27,22 @@ assert.equal(TCLK_OFFER_ROOM, 'tclk-offers');
 const payer = await createIdentity('11'.repeat(32), webcrypto);
 const payee = await createIdentity('22'.repeat(32), webcrypto);
 const now = 2_000_000_000_000;
-const demoOffer = makePaperDemoOffer(payer.did, '1000000', now);
+const demoOffer = makePaperDemoOffer(payer.did, '1000000', 'TESTCOIN', now);
 const demoAcceptResult = makePaperDemoAccept(demoOffer, payee.did);
 const demoLock = makePaperDemoLock(demoAcceptResult.accept, payer.did);
 const demoReveal = makePaperDemoReveal(
   demoAcceptResult.accept, payee.did, demoAcceptResult.secret,
 );
 const demoReceipt = makePaperDemoReceipt(demoAcceptResult.accept, payer.did);
-assert.equal(demoOffer.asset, 'PAPER');
+assert.equal(demoOffer.asset, 'TESTCOIN');
 assert.deepEqual(demoOffer.rails, ['paper']);
 assert.equal(demoOffer.expiresMs, now + 10 * 60_000);
 assert.equal(demoOffer.claimByMs, now + 45 * 60_000);
 assert.equal(demoOffer.refundAfterMs, now + 60 * 60_000);
+assert.throws(
+  () => makePaperDemoOffer(payer.did, '1000000', 'bad token name', now),
+  /asset/,
+);
 assert.equal(demoLock.ref, demoAcceptResult.accept.contract);
 assert.equal(demoReveal.secret, demoAcceptResult.secret);
 assert.equal(demoReceipt.outcome, 'claimed');

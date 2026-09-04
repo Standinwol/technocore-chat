@@ -18,8 +18,9 @@ The client and VPS use independent identities with Technocore as the message tra
    card identifies its offer maker and exposes the same Copy DID and Reply actions. The viewer is
    read-only; the separate guided PAPER controls explicitly write one step at a time.
 6. The guided demo uses the active browser DID as payer and creates a temporary payee DID only for
-   that tab. Click **Open /r/tclk-offers**, then **Post offer**, **Accept as test payee**, **Lock
-   PAPER**, **Reveal & claim**, and **Post receipt**. Progress, the temporary payee seed, and the
+   that tab. Enter any protocol-valid asset/token label and amount; the settlement rail remains the
+   valueless `paper` rehearsal. Click **Open /r/tclk-offers**, then **Post offer**, **Accept as test
+   payee**, **Lock PAPER**, **Reveal & claim**, and **Post receipt**. Progress, the temporary payee seed, and the
    unrevealed preimage live only in session storage so a reload in the same tab can resume the run.
    **New demo** clears that local state; public frames and notes already written cannot be removed.
    The same-origin proxy exposes only contract-shaped PAPER lock/claim operations, not arbitrary KV

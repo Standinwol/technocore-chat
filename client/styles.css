@@ -167,7 +167,7 @@ td { height: 86px; padding: 14px 20px; border-top: 1px solid var(--line); font-v
 .tclk-demo-heading .section-kicker { margin-bottom: 5px; }
 .tclk-demo-heading h4 { margin: 0; font-size: 0.9rem; }
 .tclk-demo-copy { margin: 9px 0 0; color: var(--muted); font-size: 0.7rem; line-height: 1.5; }
-.tclk-demo-setup { display: grid; grid-template-columns: minmax(180px, 1fr) auto; align-items: end; gap: 12px; margin-top: 14px; }
+.tclk-demo-setup { display: grid; grid-template-columns: minmax(140px, 0.7fr) minmax(180px, 1fr) auto; align-items: end; gap: 12px; margin-top: 14px; }
 .tclk-demo-setup label { color: var(--muted); font-size: 0.68rem; }
 .tclk-demo-setup input { height: 40px; margin-top: 5px; }
 .tclk-demo-setup .button { min-height: 40px; }
