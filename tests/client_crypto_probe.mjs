@@ -13,6 +13,7 @@ import {
   formatPrice,
   loadIdentitySeed,
   normalizeSymbol,
+  parseIdentityBackup,
   saveIdentitySeed,
   signSnapshot,
   signTechnocoreMessage,
@@ -77,7 +78,8 @@ const appSource = readFileSync(new URL('../client/app.mjs', import.meta.url), 'u
 const ids = [...html.matchAll(/\sid="([^"]+)"/g)].map((match) => match[1]);
 assert.equal(new Set(ids).size, ids.length, 'HTML ids must be unique');
 for (const id of ['agent-log', 'agent-form', 'agent-question', 'report-interval', 'ticker-list',
-  'room-log', 'room-composer', 'room-message', 'send-room-message', 'download-seed']) {
+  'room-log', 'room-composer', 'room-message', 'send-room-message', 'download-seed',
+  'import-seed', 'import-seed-file', 'seed-file']) {
   assert.ok(ids.includes(id), `missing #${id}`);
 }
 for (const id of ['tclk-summary', 'tclk-deals', 'room-message-filter']) {
@@ -91,6 +93,15 @@ for (const match of appSource.matchAll(/getElementById\('([^']+)'\)/g)) {
 }
 
 const seed = '000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f';
+const backupDid = `did:key:z6Mk${'A'.repeat(44)}`;
+assert.deepEqual(parseIdentityBackup(seed.toUpperCase()), { seed, did: '' });
+assert.deepEqual(parseIdentityBackup(`\uFEFFseed: ${seed}\ndid: ${backupDid}`), {
+  seed,
+  did: backupDid,
+});
+assert.throws(() => parseIdentityBackup('seed: not-a-seed'), /exactly one valid/);
+assert.throws(() => parseIdentityBackup(`seed: ${seed}\nseed: ${seed}`), /exactly one valid/);
+assert.throws(() => parseIdentityBackup(`seed: ${seed}\ndid: not-a-did`), /invalid DID/);
 const storedValues = new Map();
 const fakeStorage = {
   getItem: (key) => storedValues.get(key) ?? null,

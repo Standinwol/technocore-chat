@@ -83,6 +83,7 @@ input::placeholder { color: #607068; }
 input[readonly] { color: var(--cyan); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.78rem; }
 select { width: 100%; min-width: 0; height: 48px; border: 1px solid var(--line); border-radius: 12px; color: var(--text); background: #0a1711; padding: 0 12px; }
 .field-help { min-height: 2.6em; margin: 8px 0 0; color: #71847a; font-size: 0.73rem; line-height: 1.45; }
+.field-help.error { color: var(--red); }
 .icon-button { flex: 0 0 auto; min-width: 62px; border: 1px solid var(--line); border-radius: 12px; background: transparent; cursor: pointer; font-size: 0.78rem; font-weight: 700; }
 .icon-button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 

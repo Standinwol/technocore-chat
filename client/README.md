@@ -3,7 +3,8 @@
 The client and VPS use independent identities with Technocore as the message transport:
 
 1. The browser creates a **User DID**. Its active seed is tab-scoped and can be downloaded for
-   manual import later.
+   later restoration. **Import / Restore DID** accepts a pasted 64-hex seed, while **Import seed
+   file** reads the app's text backup locally and verifies any included DID against the derived key.
 2. The browser signs `room|nonce|text` and POSTs the envelope to the same-origin
    `/api/technocore` proxy. The proxy has a fixed upstream, accepts only valid signed shapes, and
    returns the server-assigned sequence.

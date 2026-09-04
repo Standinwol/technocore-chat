@@ -3,6 +3,7 @@ import {
   createIdentity,
   hex,
   loadIdentitySeed,
+  parseIdentityBackup,
   saveIdentitySeed,
 } from './identity.mjs';
 import {
@@ -43,6 +44,7 @@ export {
   clearIdentitySeed,
   createIdentity,
   loadIdentitySeed,
+  parseIdentityBackup,
   saveIdentitySeed,
   signSnapshot,
 } from './identity.mjs';
@@ -69,6 +71,7 @@ export {
 function startApp() {
   const elements = {
     seed: document.getElementById('seed'),
+    seedFile: document.getElementById('seed-file'),
     did: document.getElementById('did'),
     identityState: document.getElementById('identity-state'),
     identityMessage: document.getElementById('identity-message'),
@@ -99,6 +102,7 @@ function startApp() {
     copySeed: document.getElementById('copy-seed'),
     downloadSeed: document.getElementById('download-seed'),
     forget: document.getElementById('forget-did'),
+    importSeedFile: document.getElementById('import-seed-file'),
     useAgentAnswer: document.getElementById('use-agent-answer'),
     refreshRooms: document.getElementById('refresh-rooms'),
     connectRoom: document.getElementById('connect-room'),
@@ -496,10 +500,14 @@ function startApp() {
     }
   }
 
-  async function activateSeed(seed) {
+  async function activateSeed(seed, expectedDid = '') {
     elements.identityMessage.textContent = 'Deriving Ed25519 public key…';
+    elements.identityMessage.classList.remove('error');
     try {
       const nextIdentity = await createIdentity(seed);
+      if (expectedDid && expectedDid !== nextIdentity.did) {
+        throw new Error('The DID written in this backup does not match the private seed.');
+      }
       identity = nextIdentity;
       elements.seed.value = identity.seed;
       elements.did.value = identity.did;
@@ -515,11 +523,33 @@ function startApp() {
         button.disabled = false;
       }
       refreshRoomComposer();
+      return true;
     } catch (error) {
       elements.identityMessage.textContent = identity
         ? `${error.message} The current DID is unchanged.`
         : error.message;
       if (identity) elements.seed.value = identity.seed;
+      return false;
+    }
+  }
+
+  async function importSeedFile() {
+    const file = elements.seedFile.files?.[0];
+    if (!file) return;
+    try {
+      if (file.size > 8192) throw new Error('The seed backup must be smaller than 8 KiB.');
+      const backup = parseIdentityBackup(await file.text());
+      const restored = await activateSeed(backup.seed, backup.did);
+      if (restored) {
+        elements.identityMessage.textContent = backup.did
+          ? 'DID restored from file and matched against the backup identity.'
+          : 'DID restored from the seed file.';
+      }
+    } catch (error) {
+      elements.identityMessage.textContent = String(error.message || error);
+      elements.identityMessage.classList.add('error');
+    } finally {
+      elements.seedFile.value = '';
     }
   }
 
@@ -702,6 +732,8 @@ function startApp() {
     activateSeed(hex(seed));
   });
   document.getElementById('import-seed').addEventListener('click', () => activateSeed(elements.seed.value.trim()));
+  buttons.importSeedFile.addEventListener('click', () => elements.seedFile.click());
+  elements.seedFile.addEventListener('change', () => void importSeedFile());
   elements.seed.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') activateSeed(elements.seed.value.trim());
   });

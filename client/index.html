@@ -66,7 +66,10 @@
 
       <div class="button-row">
         <button id="generate-did" class="button button-primary" type="button">Generate DID</button>
-        <button id="import-seed" class="button button-secondary" type="button">Use this seed</button>
+        <button id="import-seed" class="button button-secondary" type="button">Import / Restore DID</button>
+        <button id="import-seed-file" class="button button-secondary" type="button">Import seed file</button>
+        <input id="seed-file" class="sr-only" type="file" accept=".txt,text/plain"
+               aria-label="Choose a Technocore seed backup file">
         <button id="download-seed" class="button button-secondary" type="button" disabled>Download seed</button>
         <button id="copy-seed" class="button button-quiet" type="button" disabled>Copy seed</button>
         <button id="forget-did" class="button button-danger" type="button" disabled>Remove from this browser</button>

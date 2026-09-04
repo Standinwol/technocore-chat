@@ -9,6 +9,33 @@ export function hex(bytes) {
   return Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('');
 }
 
+export function parseIdentityBackup(value) {
+  const text = String(value ?? '').replace(/^\uFEFF/, '').trim();
+  if (/^[0-9a-fA-F]{64}$/.test(text)) {
+    return { seed: text.toLowerCase(), did: '' };
+  }
+  const lines = text.split(/\r?\n/);
+  const seedLines = lines.filter((line) => /^seed\s*:/i.test(line));
+  const seedMatch = seedLines.length === 1
+    ? /^seed:\s*([0-9a-fA-F]{64})\s*$/i.exec(seedLines[0])
+    : null;
+  if (!seedMatch) {
+    throw new Error('The seed file must contain exactly one valid 64-character hex seed.');
+  }
+  const didLines = lines.filter((line) => /^did\s*:/i.test(line));
+  if (didLines.length > 1) {
+    throw new Error('The seed file contains more than one DID.');
+  }
+  const didMatch = didLines.length
+    ? /^did:\s*(did:key:z6Mk[1-9A-HJ-NP-Za-km-z]{44})\s*$/.exec(didLines[0])
+    : null;
+  if (didLines.length && !didMatch) throw new Error('The seed file contains an invalid DID.');
+  return {
+    seed: seedMatch[1].toLowerCase(),
+    did: didMatch?.[1] || '',
+  };
+}
+
 function unhex(value) {
   if (!/^[0-9a-fA-F]{64}$/.test(value)) {
     throw new Error('The private seed must be exactly 64 hexadecimal characters.');
